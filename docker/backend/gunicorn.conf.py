@@ -5,4 +5,3 @@ graceful_timeout = 30
 timeout = 75
 accesslog = "-"
 errorlog = "-"
-timezone = "America/Chihuahua"

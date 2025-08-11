@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Soluciona casos de CRLF en Windows
-if command -v dos2unix >/dev/null 2>&1; then
-  find /app/src -type f -name "*.sh" -exec dos2unix {} \; || true
-fi
-
-# Asegura que el código exista
+# Verificación mínima
 if [ ! -f "/app/src/wsgi.py" ]; then
   echo "ERROR: /app/src/wsgi.py no existe. ¿Montaste ../backend en /app/src?"
   ls -la /app || true
@@ -14,6 +9,9 @@ if [ ! -f "/app/src/wsgi.py" ]; then
   exit 1
 fi
 
-cd /app/src
-# Arranca el servidor de desarrollo de Flask ejecutando wsgi.py directamente
-exec python wsgi.py
+# Lanzar Gunicorn con Eventlet (soporte WebSockets)
+# --chdir /app/src para que 'wsgi:app' resuelva bien
+exec gunicorn \
+  --config /etc/gunicorn/gunicorn.conf.py \
+  --chdir /app/src \
+  wsgi:app
