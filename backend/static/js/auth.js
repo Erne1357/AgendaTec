@@ -1,3 +1,16 @@
+(async () => {
+  try {
+    const r = await fetch("/auth/me", { credentials: "include" });
+    if (r.ok) {
+      const { user } = await r.json();
+      if (user?.role === "student") window.location.href = "/student/home";
+      else if (user?.role === "coordinator") window.location.href = "/coord/home";
+      else if (user?.role === "social_service") window.location.href = "/social/home";
+      else window.location.href = "/";
+    }
+  } catch {}
+})();
+
 (() => {
   const form = document.getElementById("loginForm");
   const btn = document.getElementById("btnLogin");
