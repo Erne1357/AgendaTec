@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, make_response,render_template,redirect, current_app,render_template, g
 from utils.jwt_tools import encode_jwt, decode_jwt
-from services.auth_service import authenticate
+from services.auth_service import authenticate, authenticate_by_username
 from app import role_home
 
 auth_bp = Blueprint("auth", __name__)
@@ -15,10 +15,11 @@ def login_page():
 def login():
     data = request.get_json(silent=True) or {}
     cn, nip = (data.get("control_number","") or "").strip(), (data.get("nip","") or "").strip()
-    if not (cn.isdigit() and len(cn)==8 and nip.isdigit() and len(nip)==4):
-        return jsonify({"error":"invalid_format"}), 400
 
-    user = authenticate(cn, nip)
+    is_staff = not cn.isdigit()
+    current_app.logger.warning("Login attempt: cn=%s len(nip)=%s is_staff=%s", cn, len(nip), is_staff)
+
+    user = authenticate(cn, nip) if not is_staff else authenticate_by_username(cn, nip)
     if not user:
         return jsonify({"error":"invalid_credentials"}), 401
 

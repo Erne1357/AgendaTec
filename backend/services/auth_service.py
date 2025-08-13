@@ -2,6 +2,7 @@ from models import db
 from models.user import User
 from models.role import Role
 from utils.security import verify_nip
+from flask import current_app
 
 def authenticate(control_number: str, nip: str):
     """
@@ -29,4 +30,23 @@ def authenticate(control_number: str, nip: str):
         "control_number": user.control_number,
         "full_name": user.full_name,
         "email": user.email,
+    }
+
+def authenticate_by_username(username: str, nip: str):
+    u = db.session.query(User).filter_by(username=username, is_active=True).first()
+
+    current_app.logger.warning("Auth by username: user=%s found=%s", username, bool(u))
+
+    if not u:
+        return None
+    if not verify_nip(nip, u.nip_hash):
+        return None
+    role = db.session.query(Role).get(u.role_id)
+    return {
+        "id": u.id,
+        "role": role.name if role else None,
+        "control_number": u.control_number,
+        "full_name": u.full_name,
+        "email": u.email,
+        "username": u.username,
     }

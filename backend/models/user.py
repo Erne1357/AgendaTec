@@ -6,6 +6,7 @@ class User(db.Model):
     id = db.Column(db.BigInteger, primary_key=True)
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id", onupdate="CASCADE", ondelete="RESTRICT"), nullable=False)
 
+    username = db.Column(db.Text, unique=True)  # nullable for students
     control_number = db.Column(db.CHAR(8), unique=True)  # nullable for staff
     nip_hash = db.Column(db.Text)
     full_name = db.Column(db.Text, nullable=False)
