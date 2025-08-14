@@ -1,8 +1,5 @@
 # routes/api/availability.py
-import os
 from datetime import datetime, timedelta, date
-from zoneinfo import ZoneInfo
-
 from flask import Blueprint, request, jsonify, g
 from sqlalchemy import and_
 from utils.decorators import api_auth_required, api_role_required
@@ -11,39 +8,27 @@ from models.program import Program
 from models.user import User
 from models.coordinator import Coordinator
 from models.program_coordinator import ProgramCoordinator
-from models.time_slot import TimeSlot            # id, coordinator_id, start_time (tz-aware), end_time, is_booked
-from models.availability_window import AvailabilityWindow  # id, coordinator_id, start_time, end_time, slot_minutes
+from models.time_slot import TimeSlot            # id, coordinator_id, day (DATE), start_time (TIME), end_time (TIME), is_booked
+from models.availability_window import AvailabilityWindow  # id, coordinator_id, day (DATE), start_time (TIME), end_time (TIME), slot_minutes
 
 api_avail_bp = Blueprint("api_avail", __name__)
 
-# ---------- Config de TZ (local de Cd. Juárez) ----------
-TZ_NAME   = os.getenv("APP_TZ", "America/Ciudad_Juarez")
-LOCAL_TZ  = ZoneInfo(TZ_NAME)
-
-# Días permitidos (según alcance del módulo)
+# Días permitidos (según alcance)
 ALLOWED_DAYS = {date(2025, 8, 25), date(2025, 8, 26), date(2025, 8, 27)}
 
-# ---------- Helpers de fecha/hora (LOCAL TIME) ----------
+# ---------- Helpers ----------
 def _parse_day_query():
-    """?day=YYYY-MM-DD en TZ local; default: 'hoy' local (date)."""
     s = (request.args.get("day") or "").strip()
     if not s:
-        return datetime.now(LOCAL_TZ).date()
+        # Si no envían ?day, toma el día de hoy del servidor (date naive)
+        return date.today()
     try:
-        d = datetime.strptime(s, "%Y-%m-%d").date()
-        return d
+        return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return None
 
 def _parse_day_body(x: str):
-    """Desde JSON: 'YYYY-MM-DD' → date (local semantics)."""
     return datetime.strptime(x, "%Y-%m-%d").date()
-
-def _day_bounds_local(d: date):
-    """Regresa [start,end) en TZ local para ese día calendario."""
-    start = datetime(d.year, d.month, d.day, 0, 0, 0, tzinfo=LOCAL_TZ)
-    end   = start + timedelta(days=1)
-    return start, end
 
 def _require_allowed_day(d: date):
     return d in ALLOWED_DAYS
@@ -51,7 +36,7 @@ def _require_allowed_day(d: date):
 def _current_coordinator_id(fallback_id: int | None = None):
     """
     Si el usuario autenticado es 'coordinator', resuelve su coordinator_id por user_id.
-    Si es admin y manda coordinator_id en body, úsalo.
+    Si es admin y manda coordinator_id en body/query, úsalo.
     """
     try:
         uid = int(g.current_user["sub"])
@@ -59,45 +44,40 @@ def _current_coordinator_id(fallback_id: int | None = None):
         uid = None
     if uid:
         u = db.session.query(User).get(uid)
-        # si tiene rol coordinator, buscar su registro en 'coordinators'
-        if u and getattr(u, "role_id", None):
-            # si el rol es coordinator, normalmente habrá un Coordinator con user_id = u.id
+        if u and getattr(u, "id", None):
             c = db.session.query(Coordinator).filter_by(user_id=u.id).first()
             if c:
                 return c.id
     return fallback_id
 
 # =========================================================
-#              API ALUMNO: LISTAR SLOTS POR DÍA
+#            API ALUMNO: LISTAR SLOTS POR DÍA
 # =========================================================
 @api_avail_bp.get("/availability/program/<int:program_id>/slots")
 @api_auth_required
 def list_slots_for_program_day(program_id: int):
     """
-    Une coordinadores asignados al programa y devuelve slots LIBRES (is_booked=false) para un día en TZ local.
-    Respuesta: { day, program_id, items: [ {slot_id, coordinator_id, start_time, end_time}, ... ] }
+    Une coordinadores asignados al programa y devuelve slots LIBRES (is_booked=false) para un día.
+    Respuesta: { day, program_id, items: [ {slot_id, coordinator_id, day, start_time, end_time}, ... ] }
     """
-    day = _parse_day_query()
-    if not day:
+    d = _parse_day_query()
+    if not d:
         return jsonify({"error": "invalid_day_format"}), 400
 
     prog = db.session.query(Program).get(program_id)
     if not prog:
         return jsonify({"error":"program_not_found"}), 404
 
-    start_local, end_local = _day_bounds_local(day)
-
     # coordinadores del programa
     coor_ids = [pc.coordinator_id for pc in db.session.query(ProgramCoordinator)
                 .filter(ProgramCoordinator.program_id == program_id).all()]
     if not coor_ids:
-        return jsonify({"day": str(day), "program_id": program_id, "items": []})
+        return jsonify({"day": str(d), "program_id": program_id, "items": []})
 
-    # slots libres de esos coordinadores ese día (comparando en local TZ)
+    # slots libres de esos coordinadores ese día
     slots = (db.session.query(TimeSlot)
              .filter(TimeSlot.coordinator_id.in__(coor_ids))
-             .filter(and_(TimeSlot.start_time >= start_local,
-                          TimeSlot.start_time <  end_local))
+             .filter(TimeSlot.day == d)
              .filter(TimeSlot.is_booked == False)
              .order_by(TimeSlot.start_time.asc())
              .all())
@@ -105,11 +85,12 @@ def list_slots_for_program_day(program_id: int):
     items = [{
         "slot_id": s.id,
         "coordinator_id": s.coordinator_id,
-        "start_time": s.start_time.isoformat(),
-        "end_time": s.end_time.isoformat()
+        "day": str(s.day),
+        "start_time": s.start_time.strftime("%H:%M"),
+        "end_time": s.end_time.strftime("%H:%M")
     } for s in slots]
 
-    return jsonify({"day": str(day), "program_id": program_id, "items": items})
+    return jsonify({"day": str(d), "program_id": program_id, "items": items})
 
 # =========================================================
 #     API COORD/ADMIN: CREAR VENTANA DE DISPONIBILIDAD
@@ -119,16 +100,15 @@ def list_slots_for_program_day(program_id: int):
 @api_role_required(["coordinator","admin"])
 def create_availability_window():
     """
-    Crea una ventana para UNO de los 3 días permitidos (25,26,27 Ago 2025) en TZ local.
+    Crea una ventana para UNO de los 3 días permitidos (25,26,27 Ago 2025).
     Body JSON: {
       "coordinator_id": 10,    // opcional si el que llama es coordinator (se infiere)
       "day": "2025-08-25",
-      "start": "09:00",         // 24h (local)
-      "end": "13:00",           // 24h (local)
-      "slot_minutes": 10        // típico 10
+      "start": "09:00",         // HH:MM (24h)
+      "end": "13:00",           // HH:MM (24h)
+      "slot_minutes": 10
     }
-    *NOTA*: Este endpoint SOLO guarda la ventana; los slots se generan aparte
-            llamando a /availability/generate-slots
+    *NOTA*: Este endpoint SOLO guarda la ventana; los slots se generan con /availability/generate-slots
     """
     data = request.get_json(silent=True) or {}
     day_s = (data.get("day") or "").strip()
@@ -136,7 +116,7 @@ def create_availability_window():
     end_s   = (data.get("end") or "").strip()
     slot_minutes = int(data.get("slot_minutes", 10))
 
-    # resolver coordinator_id (si el que llama es coordinator, se infiere)
+    # resolver coordinator_id
     body_coor_id = data.get("coordinator_id")
     coord_id = None
     if body_coor_id is not None:
@@ -156,23 +136,23 @@ def create_availability_window():
     if not _require_allowed_day(d):
         return jsonify({"error":"day_not_allowed","allowed":[str(x) for x in sorted(ALLOWED_DAYS)]}), 400
 
-    # construir datetimes en TZ local
+    # validar horas HH:MM
     try:
         sh, sm = map(int, start_s.split(":"))
         eh, em = map(int, end_s.split(":"))
+        start_t = datetime.strptime(f"{sh:02d}:{sm:02d}", "%H:%M").time()
+        end_t   = datetime.strptime(f"{eh:02d}:{em:02d}", "%H:%M").time()
     except Exception:
         return jsonify({"error":"invalid_time_format"}), 400
 
-    start_dt = datetime(d.year, d.month, d.day, sh, sm, tzinfo=LOCAL_TZ)
-    end_dt   = datetime(d.year, d.month, d.day, eh, em, tzinfo=LOCAL_TZ)
-
-    if end_dt <= start_dt or slot_minutes not in (5, 10, 15, 20, 30, 60):
+    if (end_t <= start_t) or (slot_minutes not in (5, 10, 15, 20, 30, 60)):
         return jsonify({"error":"invalid_time_range_or_slot_size"}), 400
 
     av = AvailabilityWindow(
         coordinator_id = coord_id,
-        start_time     = start_dt,
-        end_time       = end_dt,
+        day            = d,
+        start_time     = start_t,
+        end_time       = end_t,
         slot_minutes   = slot_minutes
     )
     db.session.add(av)
@@ -187,14 +167,13 @@ def create_availability_window():
 @api_role_required(["coordinator","admin"])
 def api_generate_slots():
     """
-    Genera 'time_slots' a partir de 'availability_windows' del/los día(s) indicados (TZ local).
+    Genera 'time_slots' a partir de 'availability_windows' del/los día(s) indicados.
     Body:
       { "day": "2025-08-25" }
       o
       { "days": ["2025-08-25","2025-08-26","2025-08-27"] }
 
-    Solo procesa días permitidos (25/26/27 Ago 2025). Evita duplicados si existe índice único
-    (coordinator_id, start_time) en time_slots.
+    Evita duplicados si existe índice único (coordinator_id, day, start_time) en time_slots.
     """
     data = request.get_json(silent=True) or {}
     days = data.get("days")
@@ -217,32 +196,36 @@ def api_generate_slots():
 
     created = 0
     for d in parsed_days:
-        start_local, end_local = _day_bounds_local(d)
-        # ventanas que inician ese día (en TZ local)
         wins = (db.session.query(AvailabilityWindow)
-                .filter(and_(AvailabilityWindow.start_time >= start_local,
-                             AvailabilityWindow.start_time <  end_local))
+                .filter(AvailabilityWindow.day == d)
                 .all())
         for w in wins:
+            # iterar en saltos de w.slot_minutes entre start_time y end_time
             step = timedelta(minutes=w.slot_minutes)
-            cur = w.start_time
-            while cur + step <= w.end_time:
-                end = cur + step
-                # upsert manual; se sugiere índice único en DB:
-                # CREATE UNIQUE INDEX uq_time_slots_coor_start ON time_slots(coordinator_id, start_time);
+            cur_dt = datetime.combine(w.day, w.start_time)
+            end_dt = datetime.combine(w.day, w.end_time)
+
+            while (cur_dt + step) <= end_dt:
+                start_t = cur_dt.time()
+                end_t   = (cur_dt + step).time()
+
                 exists = (db.session.query(TimeSlot.id)
                           .filter(TimeSlot.coordinator_id == w.coordinator_id,
-                                  TimeSlot.start_time == cur)
+                                  TimeSlot.day == w.day,
+                                  TimeSlot.start_time == start_t)
                           .first())
                 if not exists:
                     db.session.add(TimeSlot(
                         coordinator_id = w.coordinator_id,
-                        start_time     = cur,
-                        end_time       = end,
+                        day            = w.day,
+                        start_time     = start_t,
+                        end_time       = end_t,
                         is_booked      = False
                     ))
                     created += 1
-                cur = end
+
+                cur_dt += step
+
     db.session.commit()
     return jsonify({"ok": True, "slots_created": created, "days": [str(d) for d in parsed_days]})
 
@@ -258,20 +241,17 @@ def list_my_windows():
       - el coordinador autenticado, o
       - un coordinator_id pasado por query (solo admin)
     """
-    day = _parse_day_query()
-    if not day:
+    d = _parse_day_query()
+    if not d:
         return jsonify({"error":"invalid_day_format"}), 400
-    if not _require_allowed_day(day):
+    if not _require_allowed_day(d):
         return jsonify({"error":"day_not_allowed","allowed":[str(x) for x in sorted(ALLOWED_DAYS)]}), 400
 
-    start_local, end_local = _day_bounds_local(day)
-
-    # por default, el propio coordinador
-    coord_id = request.args.get("coordinator_id")
+    coord_id_q = request.args.get("coordinator_id")
     cid = None
-    if coord_id:
+    if coord_id_q:
         try:
-            cid = int(coord_id)
+            cid = int(coord_id_q)
         except Exception:
             return jsonify({"error":"invalid_coordinator_id"}), 400
     cid = _current_coordinator_id(cid)
@@ -279,17 +259,17 @@ def list_my_windows():
         return jsonify({"error":"coordinator_not_found"}), 404
 
     wins = (db.session.query(AvailabilityWindow)
-            .filter(AvailabilityWindow.coordinator_id == cid)
-            .filter(and_(AvailabilityWindow.start_time >= start_local,
-                         AvailabilityWindow.start_time <  end_local))
+            .filter(AvailabilityWindow.coordinator_id == cid,
+                    AvailabilityWindow.day == d)
             .order_by(AvailabilityWindow.start_time.asc())
             .all())
 
     items = [{
         "id": w.id,
         "coordinator_id": w.coordinator_id,
-        "start_time": w.start_time.isoformat(),
-        "end_time": w.end_time.isoformat(),
+        "day": str(w.day),
+        "start_time": w.start_time.strftime("%H:%M"),
+        "end_time": w.end_time.strftime("%H:%M"),
         "slot_minutes": w.slot_minutes
     } for w in wins]
-    return jsonify({"day": str(day), "coordinator_id": cid, "items": items})
+    return jsonify({"day": str(d), "coordinator_id": cid, "items": items})
