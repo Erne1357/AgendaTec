@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Coordinador - Horario & Slots{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Configurar horario del día</h5>
+        <form id="dayConfigForm" class="row g-2 align-items-end">
+          <div class="col-12 col-sm-4">
+            <label class="form-label">Día</label>
+            <select class="form-select" id="cfgDay" required>
+              <option value="2025-08-25">Lun 25 Ago</option>
+              <option value="2025-08-26">Mar 26 Ago</option>
+              <option value="2025-08-27">Mié 27 Ago</option>
+            </select>
+          </div>
+          <div class="col-6 col-sm-2">
+            <label class="form-label">Inicio</label>
+            <input type="time" class="form-control" id="cfgStart" value="09:00" required>
+          </div>
+          <div class="col-6 col-sm-2">
+            <label class="form-label">Fin</label>
+            <input type="time" class="form-control" id="cfgEnd" value="13:00" required>
+          </div>
+          <div class="col-6 col-sm-2">
+            <label class="form-label">Min/slot</label>
+            <select class="form-select" id="cfgMinutes">
+              <option>10</option><option>15</option><option>20</option><option>30</option>
+            </select>
+          </div>
+          <div class="col-6 col-sm-2 d-grid">
+            <button class="btn btn-primary" id="btnSaveCfg">Guardar y generar</button>
+          </div>
+        </form>
+        <div id="cfgResult" class="mt-2 small text-muted"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/coord/home.js') }}?v={{ static_version }}"></script>
+{% endblock %}

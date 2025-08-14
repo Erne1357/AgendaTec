@@ -13,6 +13,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
+    app.config["STATIC_VERSION"] = "1.0.2"  
 
     db.init_app(app)
 
@@ -57,7 +58,7 @@ def create_app():
     def home():
         if g.current_user:
             return redirect(role_home(g.current_user.get("role")))
-        return redirect(url_for("pages_pages_auth.login_page"))
+        return redirect(url_for("pages_auth.login_page"))
 
 
 
@@ -74,9 +75,42 @@ def create_app():
         return "Social service dashboard (placeholder)"
     
     @app.context_processor
-    def inject_user():
-        return {"current_user": g.current_user}
+    def inject_globals():
+        def nav_for(role: str | None):
+            # Estructura de menú basada en páginas. Puedes ajustar labels/orden.
+            base = [
+                # Entradas compartidas por múltiples roles
+                {"label": "Citas (Servicio Social)", "endpoint": "social_pages.social_home",
+                 "roles": ["social_service","coordinator","admin"]},
+                {"label": "Panel coordinador", "endpoint": "coord_pages.coord_home_page",
+                 "roles": ["coordinator","admin"]},
+            ]
+            # Estudiante
+            student = [
+                {"label": "Inicio", "endpoint": "student_pages.student_home", "roles": ["student"]},
+                {"label": "Mis solicitudes", "endpoint": "student_pages.student_requests", "roles": ["student"]},
+            ]
+            # Coordinador
+            coord = [
+                {"label": "Mi horario / slots", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator","admin"]},
+                {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator","admin"]},
+                {"label": "Drops", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator","admin"]},
+            ]
+            # Social
+            social = [
+                {"label": "Citas (día)", "endpoint": "social_pages.social_home", "roles": ["social_service","coordinator","admin"]},
+            ]
 
+            all_items = base + student + coord + social
+            if not role:  # no logueado
+                return []
+            return [it for it in all_items if role in it["roles"]]
+
+        return {
+            "current_user": g.current_user,
+            "static_version": current_app.config.get("STATIC_VERSION", "1.0.0"),
+            "nav_for": nav_for
+        }
     return app
 
 def register_blueprints(app):
@@ -86,17 +120,23 @@ def register_blueprints(app):
     from routes.api.availability import api_avail_bp
     from routes.api.requests import api_req_bp
     from routes.api.slots import api_slots_bp
+    from routes.api.coord import api_coord_bp
     app.register_blueprint(api_auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(api_programs_bp, url_prefix="/api/v1")
     app.register_blueprint(api_avail_bp, url_prefix="/api/v1")
     app.register_blueprint(api_req_bp, url_prefix="/api/v1")
     app.register_blueprint(api_slots_bp, url_prefix="/api/v1")
+    app.register_blueprint(api_coord_bp, url_prefix="/api/v1")
 
     #Register blueprints for pages
     from routes.pages.auth import pages_auth_bp
-    from routes.pages.student import pages_student_bp
+    from routes.pages.student import student_pages_bp
+    from routes.pages.coord import coord_pages_bp
+    from routes.pages.social import social_pages_bp
+    app.register_blueprint(social_pages_bp, url_prefix="/social")
     app.register_blueprint(pages_auth_bp, url_prefix="/auth")
-    app.register_blueprint(pages_student_bp, url_prefix="/student")
+    app.register_blueprint(student_pages_bp, url_prefix="/student")
+    app.register_blueprint(coord_pages_bp, url_prefix="/coord")
 
 def role_home(role: str) -> str:
         return { "student": "/student/home",

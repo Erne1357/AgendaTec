@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Alumno - Mis solicitudes{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="card-title">Mis solicitudes</h5>
+    <div id="reqPanel"></div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/student_requests.js') }}?v={{ static_version }}"></script>
+{% endblock %}
