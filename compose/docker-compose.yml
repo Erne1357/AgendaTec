@@ -5,6 +5,16 @@ services:
     ports:
       - "6379:6379"
 
+  postgres:
+    restart: always
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile.db
+    env_file: ../.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
   backend:
     restart: always
     build:
@@ -14,6 +24,7 @@ services:
     volumes:
       - ../backend:/app/src
     depends_on:
+      - postgres
       - redis
 
   nginx:
@@ -28,3 +39,6 @@ services:
       - backend
     ports:
       - "8080:80"
+  
+volumes:
+  pgdata:
