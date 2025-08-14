@@ -84,9 +84,11 @@ def register_blueprints(app):
     from routes.api.auth import api_auth_bp
     from routes.api.programs_academic import api_programs_bp
     from routes.api.availability import api_avail_bp
+    from routes.api.requests import api_req_bp
     app.register_blueprint(api_auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(api_programs_bp, url_prefix="/api/v1")
     app.register_blueprint(api_avail_bp, url_prefix="/api/v1")
+    app.register_blueprint(api_req_bp, url_prefix="/api/v1")
 
     #Register blueprints for pages
     from routes.pages.auth import pages_auth_bp
