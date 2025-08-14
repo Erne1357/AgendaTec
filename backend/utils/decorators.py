@@ -6,7 +6,7 @@ def login_required(view):
     def wrapper(*args, **kwargs):
         if not g.get("current_user"):
             next_url = request.path
-            return redirect(url_for("auth.login_page", next=next_url))
+            return redirect(url_for("pages_auth.login_page", next=next_url))
         return view(*args, **kwargs)
     return wrapper
 
@@ -17,7 +17,7 @@ def role_required_page(roles: list[str]):
             cu = g.get("current_user")
             if not cu:
                 next_url = request.path
-                return redirect(url_for("auth.login_page", next=next_url))
+                return redirect(url_for("pages_auth.login_page", next=next_url))
             if cu.get("role") not in roles:
                 # 403 o redirigir a su home
                 return redirect("/")

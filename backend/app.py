@@ -57,14 +57,9 @@ def create_app():
     def home():
         if g.current_user:
             return redirect(role_home(g.current_user.get("role")))
-        return redirect(url_for("auth.login_page"))
+        return redirect(url_for("pages_pages_auth.login_page"))
 
-    # Demos de dashboard por rol (placeholders)
-    @app.get("/student/home")
-    @login_required
-    @role_required_page(["student"])
-    def student_home():
-        return "Student dashboard (placeholder)"
+
 
     @app.get("/coord/home")
     @login_required
@@ -85,8 +80,17 @@ def create_app():
     return app
 
 def register_blueprints(app):
-    from routes.auth import auth_bp
-    app.register_blueprint(auth_bp, url_prefix="/auth")
+    # Register blueprints for apis
+    from routes.api.auth import api_auth_bp
+    from routes.api.programs_academic import api_programs_bp
+    app.register_blueprint(api_auth_bp, url_prefix="/api/v1/auth")
+    app.register_blueprint(api_programs_bp, url_prefix="/api/v1")
+
+    #Register blueprints for pages
+    from routes.pages.auth import pages_auth_bp
+    from routes.pages.student import pages_student_bp
+    app.register_blueprint(pages_auth_bp, url_prefix="/auth")
+    app.register_blueprint(pages_student_bp, url_prefix="/student")
 
 def role_home(role: str) -> str:
         return { "student": "/student/home",
