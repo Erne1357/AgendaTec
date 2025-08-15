@@ -31,4 +31,3 @@
     panel.innerHTML = `<div class="text-muted">No se pudieron cargar tus solicitudes.</div>`;
   }
 })();
-xd

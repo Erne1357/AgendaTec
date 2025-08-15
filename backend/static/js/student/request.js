@@ -89,6 +89,7 @@
 
   programSelect.addEventListener("change", async (e) => {
     stepForms.hidden = false;
+    btnConfirmForms.hidden = state.type === "DROP";
     const id = parseInt(e.target.value || "0", 10);
     state.program_id = Number.isFinite(id) && id > 0 ? id : null;
     coordCard.hidden = true;
@@ -115,7 +116,7 @@
   });
 
   // ------------- Paso 4: calendario + slots -------------
-    $("#btnConfirmForms").addEventListener("click", () => {
+    btnConfirmForms.addEventListener("click", () => {
         if( state.type != "DROP") {
         stepCalendar.hidden = false;
         stepForms.hidden = true;
@@ -206,7 +207,7 @@
 
     let body;
     if (state.type === "DROP") {
-      body = { type: "DROP" };
+      body = { type: "DROP" , program_id : state.program_id };
     } else {
       if (!state.day || !state.slot_id) {
         showToast("Selecciona un día y un horario.", "warn");

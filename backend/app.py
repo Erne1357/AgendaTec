@@ -13,7 +13,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.2223321"  
+    app.config["STATIC_VERSION"] = "1.0.2223324"  
 
 
     db.init_app(app)

@@ -79,7 +79,7 @@ def create_request():
         return jsonify({"error": "already_has_pending"}), 409
 
     if req_type == "DROP":
-        r = Request(student_id=u.id, type="DROP", status="PENDING")
+        r = Request(student_id=u.id, program_id = int(data.get("program_id")) ,type="DROP", status="PENDING")
         db.session.add(r)
         db.session.commit()
         return jsonify({"ok": True, "request_id": r.id})
