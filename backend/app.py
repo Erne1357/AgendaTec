@@ -14,6 +14,10 @@ def create_app():
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+=======
+    app.config["STATIC_VERSION"] = "1.0.2223321"  
+>>>>>>> Stashed changes
 =======
     app.config["STATIC_VERSION"] = "1.0.2223321"  
 >>>>>>> Stashed changes
@@ -62,6 +66,7 @@ def create_app():
         if g.current_user:
             return redirect(role_home(g.current_user.get("role")))
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         return redirect(url_for("pages_pages_auth.login_page"))
 
 
@@ -77,6 +82,9 @@ def create_app():
     @role_required_page(["social_service"])
     def social_home():
         return "Social service dashboard (placeholder)"
+=======
+        return redirect(url_for("pages_auth.login_page"))
+>>>>>>> Stashed changes
     
     @app.context_processor
     def inject_user():
