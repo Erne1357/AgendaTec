@@ -3,6 +3,7 @@ from flask import Flask, render_template, redirect, url_for, request,current_app
 from models import db
 from utils.jwt_tools import encode_jwt, decode_jwt
 from utils.decorators import login_required, role_required_page, api_auth_required, api_role_required   
+import logging
 
 def create_app():
     app = Flask(__name__, static_url_path="/static", static_folder="static", template_folder="templates")
@@ -69,7 +70,8 @@ def create_app():
             if "cita" in lbl: return "bi-calendar2-check"
             if "drop" in lbl: return "bi-arrow-down-circle"
             if "servicio social" in lbl: return "bi-people"
-            if "alumno" in lbl or "inicio" in lbl: return "bi-house"
+            if "inicio" in lbl: return "bi-house"
+            if "mis solicitudes" in lbl: return "bi-file-earmark-text"
             return "bi-grid"
 
         def is_active(url: str) -> bool:
