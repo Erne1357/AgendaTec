@@ -13,14 +13,8 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-=======
     app.config["STATIC_VERSION"] = "1.0.2223321"  
->>>>>>> Stashed changes
-=======
-    app.config["STATIC_VERSION"] = "1.0.2223321"  
->>>>>>> Stashed changes
+
 
     db.init_app(app)
 
@@ -65,32 +59,6 @@ def create_app():
     def home():
         if g.current_user:
             return redirect(role_home(g.current_user.get("role")))
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-        return redirect(url_for("pages_pages_auth.login_page"))
-
-
-
-    @app.get("/coord/home")
-    @login_required
-    @role_required_page(["coordinator"])
-    def coord_home():
-        return "Coordinator dashboard (placeholder)"
-
-    @app.get("/social/home")
-    @login_required
-    @role_required_page(["social_service"])
-    def social_home():
-        return "Social service dashboard (placeholder)"
-=======
-        return redirect(url_for("pages_auth.login_page"))
->>>>>>> Stashed changes
-    
-    @app.context_processor
-    def inject_user():
-        return {"current_user": g.current_user}
-
-=======
         return redirect(url_for("pages_auth.login_page"))
     
     @app.context_processor
@@ -156,7 +124,6 @@ def create_app():
             "nav_for": nav_for,
             "is_active": is_active,
         }
->>>>>>> Stashed changes
     return app
 
 def register_blueprints(app):
@@ -166,17 +133,23 @@ def register_blueprints(app):
     from routes.api.availability import api_avail_bp
     from routes.api.requests import api_req_bp
     from routes.api.slots import api_slots_bp
+    from routes.api.coord import api_coord_bp
     app.register_blueprint(api_auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(api_programs_bp, url_prefix="/api/v1")
     app.register_blueprint(api_avail_bp, url_prefix="/api/v1")
     app.register_blueprint(api_req_bp, url_prefix="/api/v1")
     app.register_blueprint(api_slots_bp, url_prefix="/api/v1")
+    app.register_blueprint(api_coord_bp, url_prefix="/api/v1")
 
     #Register blueprints for pages
     from routes.pages.auth import pages_auth_bp
-    from routes.pages.student import pages_student_bp
+    from routes.pages.student import student_pages_bp
+    from routes.pages.coord import coord_pages_bp
+    from routes.pages.social import social_pages_bp
+    app.register_blueprint(social_pages_bp, url_prefix="/social")
     app.register_blueprint(pages_auth_bp, url_prefix="/auth")
-    app.register_blueprint(pages_student_bp, url_prefix="/student")
+    app.register_blueprint(student_pages_bp, url_prefix="/student")
+    app.register_blueprint(coord_pages_bp, url_prefix="/coord")
 
 def role_home(role: str) -> str:
         return { "student": "/student/home",
