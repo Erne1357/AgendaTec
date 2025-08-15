@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Coordinador - Citas del día{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-12">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3">Citas del día</h5>
+        <div class="row g-2 mb-2">
+          <div class="col-6 col-sm-3">
+            <label class="form-label">Día</label>
+            <select class="form-select" id="apDay">
+              <option value="2025-08-25">25 Ago</option>
+              <option value="2025-08-26">26 Ago</option>
+              <option value="2025-08-27">27 Ago</option>
+            </select>
+          </div>
+          <div class="col-6 col-sm-3">
+            <label class="form-label">Estado</label>
+            <select class="form-select" id="apStatus">
+              <option value="">Todos</option>
+              <option>SCHEDULED</option><option>DONE</option><option>NO_SHOW</option><option>CANCELED</option>
+            </select>
+          </div>
+          <div class="col-12 col-sm-3 d-grid">
+            <label class="form-label d-none d-sm-block">&nbsp;</label>
+            <button class="btn btn-outline-primary" id="btnLoadAppointments">Cargar</button>
+          </div>
+        </div>
+        <div id="apList" class="table-responsive"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/coord/appointments.js') }}?v={{ static_version }}"></script>
+{% endblock %}
