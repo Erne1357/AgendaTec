@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 {% extends "layouts/base.html" %}
 {% block title %}Mi carrera{% endblock %}
 {% block content %}
@@ -10,6 +11,33 @@
     <h5 class="card-title" id="coordName"></h5>
     <p class="mb-1"><strong>Correo:</strong> <span id="coordEmail"></span></p>
     <p class="mb-0"><strong>Horario:</strong> <span id="coordHours"></span></p>
+=======
+{% extends "base.html" %}
+{% block title %}Alumno - Inicio{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-12 col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title d-flex align-items-center gap-2">
+          <i class="bi bi-info-circle"></i> Recordatorio importante
+        </h5>
+        <ul class="mb-3">
+          <li>Solo puedes tener <strong>una solicitud activa</strong> a la vez.</li>
+          <li>Si cancelas una solicitud, puedes crear otra, pero corres el riesgo de que ya no haya lugares.</li>
+          <li>Si solicitas <strong>baja</strong> únicamente: se genera el registro (verifica tus <strong>créditos</strong>).</li>
+          <li>Si solicitas <strong>alta</strong> o <strong>ambas</strong>: debes agendar una <strong>cita con tu coordinador</strong>.</li>
+        </ul>
+        <a href="{{ url_for('student_pages.student_new_request') }}" class="btn btn-primary">
+          <i class="bi bi-rocket-takeoff me-1"></i> Iniciar solicitud
+        </a>
+        <a href="{{ url_for('student_pages.student_requests') }}" class="btn btn-outline-secondary ms-2">
+          <i class="bi bi-journal-text me-1"></i> Ver mis solicitudes
+        </a>
+      </div>
+    </div>
+>>>>>>> Stashed changes
   </div>
 </div>
 {% endblock %}

@@ -2,3 +2,46 @@
 body { min-height: 100dvh; }
 .card { border-radius: 1rem; }
 .btn { border-radius: 0.75rem; }
+
+/* Bloque calendario: animación expand-fade */
+.expand-fade-enter {
+  opacity: 0;
+  transform: scale(0.98);
+  height: 0;
+}
+.expand-fade-enter-active {
+  opacity: 1;
+  transform: scale(1);
+  height: auto;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.expand-fade-exit {
+  opacity: 1;
+  transform: scale(1);
+  height: auto;
+}
+.expand-fade-exit-active {
+  opacity: 0;
+  transform: scale(0.98);
+  height: 0;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+/* Botones/slots */
+.slot-btn {
+  min-width: 98px;
+  margin: 4px;
+}
+.slot-btn.booked {
+  pointer-events: none;
+  opacity: .5;
+}
+
+/* Cards responsivas (móvil) */
+@media (max-width: 576px) {
+  .card-title .bi { font-size: 1.1rem; }
+  .slot-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+}
+@media (min-width: 577px) {
+  .slot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+}

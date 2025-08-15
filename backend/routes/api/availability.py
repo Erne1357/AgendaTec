@@ -76,7 +76,7 @@ def list_slots_for_program_day(program_id: int):
 
     # slots libres de esos coordinadores ese día
     slots = (db.session.query(TimeSlot)
-             .filter(TimeSlot.coordinator_id.in__(coor_ids))
+             .filter(TimeSlot.coordinator_id.in_(coor_ids))
              .filter(TimeSlot.day == d)
              .filter(TimeSlot.is_booked == False)
              .order_by(TimeSlot.start_time.asc())

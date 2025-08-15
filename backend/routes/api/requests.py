@@ -44,7 +44,7 @@ def my_requests():
                     "id": ap.id,
                     "program_id": ap.program_id,
                     "coordinator_id": ap.coordinator_id,
-                    "time_slot_id": ap.time_slot_id,
+                    "slot_id": ap.slot_id,
                     "status": ap.status
                 }
         return item
@@ -122,7 +122,7 @@ def create_request():
             db.session.rollback()
             return jsonify({"error": "slot_conflict"}), 409
 
-        r = Request(student_id=u.id, type="APPOINTMENT", status="PENDING")
+        r = Request(student_id=u.id, program_id = data.get("program_id"), type="APPOINTMENT", status="PENDING")
         db.session.add(r)
         db.session.flush()
 
@@ -131,7 +131,7 @@ def create_request():
             student_id=u.id,
             program_id=program_id,
             coordinator_id=slot.coordinator_id,
-            time_slot_id=slot_id,
+            slot_id=slot_id,
             status="SCHEDULED"
         )
         db.session.add(ap)
@@ -158,7 +158,7 @@ def cancel_request(req_id: int):
     if r.type == "APPOINTMENT":
         ap = db.session.query(Appointment).filter(Appointment.request_id == r.id).first()
         if ap:
-            slot = db.session.query(TimeSlot).get(ap.time_slot_id)
+            slot = db.session.query(TimeSlot).get(ap.slot_id)
             if slot and slot.is_booked:
                 slot.is_booked = False
             ap.status = "CANCELED"
