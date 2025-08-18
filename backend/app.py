@@ -14,7 +14,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.22233375"  
+    app.config["STATIC_VERSION"] = "1.0.2223337981"  
 
 
     db.init_app(app)
@@ -66,6 +66,7 @@ def create_app():
     def inject_globals():
         def _icon_for(label: str) -> str:
             lbl = (label or "").lower()
+            if "dashboard" in lbl: return "bi-grid"
             if "coordinador" in lbl: return "bi-person-gear"
             if "cita" in lbl: return "bi-calendar2-check"
             if "drop" in lbl: return "bi-arrow-down-circle"
@@ -81,23 +82,22 @@ def create_app():
 
         def nav_for(role: str | None):
             # ----- Definición del árbol de navegación -----
-            base = [
+            social = [
                 {"label": "Citas", "endpoint": "social_pages.social_home",
-                "roles": ["social_service", "coordinator", "admin"]},
-                {"label": "Panel coordinador", "endpoint": "coord_pages.coord_home_page",
-                "roles": ["coordinator", "admin"]},
+                "roles": ["social_service"]}
             ]
             student = [
                 {"label": "Inicio", "endpoint": "student_pages.student_home", "roles": ["student"]},
                 {"label": "Mis solicitudes", "endpoint": "student_pages.student_requests", "roles": ["student"]},
             ]
             coord = [
-                {"label": "Mi horario / slots", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator", "admin"]},
+                {"label": "Dashboard", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator", "admin"]},
+                {"label": "Horario & Slots", "endpoint": "coord_pages.coord_slots_page", "roles": ["coordinator", "admin"]},
                 {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator", "admin"]},
-                {"label": "Drops", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator", "admin"]},
+                {"label": "Bajas", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator", "admin"]},
             ]
 
-            all_items = base + student + coord
+            all_items = student + coord + social
             if not role:
                 return []
 

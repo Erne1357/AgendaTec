@@ -21,14 +21,14 @@
                 <form id="loginForm" class="needs-validation" novalidate>
                     <div class="form-floating mb-3">
                         <input type="text" class="form-control" id="control_number" placeholder="Usuario"
-                            inputmode="numeric" required>
+                             required>
                         <label for="control_number">Usuario (número de control)</label>
                         <div class="invalid-feedback">Ingresa tú número de control</div>
                     </div>
 
                     <div class="form-floating mb-3">
                         <input type="password" class="form-control" id="nip" placeholder="NIP" inputmode="numeric"
-                            pattern="[0-9]{4}" maxlength="4" required>
+                            pattern="[0-9]{3,5}" maxlength="5" required>
                         <label for="nip">NIP</label>
                         <div class="invalid-feedback">Ingresa 4 dígitos.</div>
                     </div>

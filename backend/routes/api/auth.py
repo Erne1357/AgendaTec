@@ -21,7 +21,7 @@ def api_login():
     if is_8_digits:
         user = authenticate(raw_id, nip)
     else:
-        user = authenticate_by_username(raw_id.lower(), nip)
+        user = authenticate_by_username(raw_id, nip)
 
     if not user:
         return jsonify({"error":"invalid_credentials"}), 401

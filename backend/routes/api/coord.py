@@ -13,10 +13,20 @@ from models.availability_window import AvailabilityWindow
 from models.time_slot import TimeSlot
 from models.request import Request
 from models.appointment import Appointment
+from utils.security import verify_nip, hash_nip
 
 api_coord_bp = Blueprint("api_coord", __name__)
 
 ALLOWED_DAYS = {date(2025,8,25), date(2025,8,26), date(2025,8,27)}
+DEFAULT_NIP = "1234"
+
+def _current_user():
+    try:
+        uid = int(g.current_user["sub"])
+    except Exception:
+        return None
+    u = db.session.query(User).get(uid)
+    return u
 
 def _current_coordinator_id():
     try:
@@ -217,6 +227,7 @@ def coord_appointments():
             "appointment_id": ap.id,
             "request_id": req.id,
             "program": {"id": prog.id, "name": prog.name},
+            "description": req.description,
             "slot": {
                 "day": str(slot.day),
                 "start_time": slot.start_time.strftime("%H:%M"),
@@ -300,7 +311,7 @@ def coord_drops():
     rows = (q.order_by(Request.created_at.desc())
               .offset((page-1)*page_size).limit(page_size).all())
 
-    items = [{"id": r.id, "status": r.status, "created_at": r.created_at.isoformat()}
+    items = [{"id": r.id, "status": r.status,"description" : r.description, "created_at": r.created_at.isoformat()}
              for r in rows]
     return jsonify({"total": total, "items": items})
 
@@ -326,20 +337,38 @@ def update_request_status(req_id: int):
     db.session.commit()
     return jsonify({"ok": True})
 
+@api_coord_bp.get("/coord/password-state")
+@api_auth_required
+@api_role_required(["coordinator","admin"])
+def coord_password_state():
+    u = _current_user()
+    if not u:
+        return jsonify({"error":"user_not_found"}), 404
+    must_change = verify_nip(DEFAULT_NIP, u.nip_hash )
+    return jsonify({"must_change": must_change})
+
 @api_coord_bp.post("/coord/change_password")
 @api_auth_required
 @api_role_required(["coordinator","admin"])
 def change_password():
-    coord_id = _current_coordinator_id()
-    if not coord_id:
-        return jsonify({"error":"coordinator_not_found"}), 404
+    """
+    Cambia el NIP (4 dígitos). Se hashea en servidor.
+    Si el usuario sigue con 1234, no exigimos current_password.
+    Si NO está en 1234, opcionalmente puedes exigir current_password (comentado).
+    """
+    u = _current_user()
+    if not u:
+        return jsonify({"error":"user_not_found"}), 404
 
     data = request.get_json(silent=True) or {}
-    new_password = data.get("new_password")
-    if not new_password:
-        return jsonify({"error":"missing_new_password"}), 400
+    new_password = (data.get("new_password") or "").strip()
 
-    # Aquí se actualizaría la contraseña en la base de datos
-    # ...
+    if not (new_password.isdigit() and len(new_password) == 4):
+        return jsonify({"error":"invalid_new_password"}), 400
 
+    # Guardar hash nuevo
+    coord = db.session.query(Coordinator).filter_by(user_id=u.id).first()
+    coord.must_change_pw = False 
+    u.nip_hash = hash_nip(new_password)
+    db.session.commit()
     return jsonify({"ok": True})

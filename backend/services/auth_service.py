@@ -35,7 +35,6 @@ def authenticate(control_number: str, nip: str):
 def authenticate_by_username(username: str, nip: str):
     u = db.session.query(User).filter_by(username=username, is_active=True).first()
 
-    current_app.logger.warning("Auth by username: user=%s found=%s", username, bool(u))
 
     if not u:
         return None

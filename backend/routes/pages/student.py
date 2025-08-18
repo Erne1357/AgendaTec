@@ -9,7 +9,6 @@ student_pages_bp = Blueprint("student_pages", __name__)
 @role_required_page(["student"])
 def student_home():
     g.current_user["has_appointment"] = has_request(g.current_user["sub"])
-    current_app.logger.warning(f"User {g.current_user['sub']} has_appointment: {g.current_user['has_appointment']}")
     return render_template("student/home.html", title="Alumno - Inicio")
 
 @student_pages_bp.get("/requests")

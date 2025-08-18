@@ -8,10 +8,12 @@
     let active = actActive(data.active);
     let history = data.history;
     let html = "";
+    let day = getLabelDay(active);
+    console.log("Day : ",day);
     if (active) {
       html += `<div class="mb-3">
         <div class="fw-semibold">Solicitud activa</div>
-        <div class="small text-muted">${active.type} • ${active.appointment ? active.appointment.status : active.status}</div>
+        <div class="small text-muted">${active.type} ${active.appointment ? day : ""}• ${active.appointment ? active.appointment.status : active.status}</div>
         ${active.type === "Cita" && active.appointment ? `
         <div class="small">Cita #${active.appointment.id} (slot ${active.appointment.slot_id})</div>` : ``}
         <div class="small text-muted">Creada el ${active.created_at}</div>
@@ -93,5 +95,9 @@
       return active;
     }
 
+  }
+  function getLabelDay(active){
+    if(!Boolean(active.appointment)) return "";
+    return `el día ${active.appointment.slot.day} de ${active.appointment.slot.start_time} a ${active.appointment.slot.end_time}`;
   }
 })();

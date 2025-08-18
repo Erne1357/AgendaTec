@@ -155,7 +155,6 @@
       });
       if (!r.ok) throw 0;
       const data = await r.json();
-      console.log(data);
       renderSlots(data.items || []);
       // Animación al mostrar grid
       slotsWrap.hidden = false;
@@ -165,7 +164,6 @@
   }
 
   function renderSlots(items) {
-    console.log("items : " + items)
     state.slot_id = null;
     updateSubmitDisabled();
 
@@ -210,8 +208,6 @@
       horario: bajaHorario.value || null
     };
 
-    console.log("Alta Info:", altaInfo);
-    console.log("Baja Info:", bajaInfo);
 
     let body;
     if (state.type === "DROP") {
@@ -346,6 +342,5 @@
     state.description = getDescription();
     btnSubmit.hidden = !state.description || state.description === "";
     updateSubmitDisabled();
-    console.log("Descripción" + state.description);
   });
 })();

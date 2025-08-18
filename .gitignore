@@ -63,3 +63,5 @@ build/
 .vscode/
 .idea/
 *.code-workspace
+
+addStudents.py

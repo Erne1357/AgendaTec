@@ -17,7 +17,7 @@ api_req_bp = Blueprint("api_requests", __name__)
 ALLOWED_DAYS = {date(2025, 8, 25), date(2025, 8, 26), date(2025, 8, 27)}
 
 def _get_current_student():
-    uid = int(g.current_user["sub"])
+    uid = g.current_user["sub"]
     u = db.session.query(User).get(uid)
     return u
 
@@ -39,14 +39,19 @@ def my_requests():
         item = {"id": r.id, "type": r.type,"description": r.description ,"status": r.status, "created_at": r.created_at.isoformat()}
         if r.type == "APPOINTMENT":
             ap = db.session.query(Appointment).filter(Appointment.request_id == r.id).first()
-            current_app.logger.warning(f"Appointment found: {ap}")
-            current_app.logger.warning(f"Appointment status: {ap.status if ap else 'None'}")
             if ap:
+                sl = db.session.query(TimeSlot).get(ap.slot_id)
                 item["appointment"] = {
                     "id": ap.id,
                     "program_id": ap.program_id,
                     "coordinator_id": ap.coordinator_id,
-                    "slot_id": ap.slot_id,
+                    "slot": {
+                        "id": sl.id,
+                        "day": sl.day.isoformat(),
+                        "start_time": sl.start_time.isoformat(),
+                        "end_time": sl.end_time.isoformat(),  
+                        "is_booked": sl.is_booked
+                    },
                     "status": ap.status
                 }
         return item
@@ -64,7 +69,6 @@ def create_request():
     data = request.get_json(silent=True) or {}
     req_type = (data.get("type") or "").upper()
 
-    current_app.logger.warning(f"Creating request for user {u.id} type={req_type} data={data}")
 
     exists = (db.session.query(Request.id)
               .filter(Request.student_id == u.id)
