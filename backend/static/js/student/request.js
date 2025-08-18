@@ -42,7 +42,8 @@
   const btnSubmit = $("#btnSubmit");
   const actionBar = $("#actionBar");
 
-
+  //Empezar con el botón submit sin mostrarse
+  btnSubmit.hidden = true;
   // ------------- Paso 1: elegir tipo -------------
   $("[data-type='DROP']").addEventListener("click", () => chooseType("DROP"));
   $("[data-type='APPOINTMENT']").addEventListener("click", () => chooseType("APPOINTMENT"));
@@ -89,6 +90,7 @@
 
   programSelect.addEventListener("change", async (e) => {
     stepForms.hidden = false;
+    stepProgram.hidden = true;
     btnConfirmForms.hidden = state.type === "DROP";
     const id = parseInt(e.target.value || "0", 10);
     state.program_id = Number.isFinite(id) && id > 0 ? id : null;
@@ -205,6 +207,9 @@
       horario: bajaHorario.value || null
     };
 
+    console.log("Alta Info:", altaInfo);
+    console.log("Baja Info:", bajaInfo);
+
     let body;
     if (state.type === "DROP") {
       body = { type: "DROP" , program_id : state.program_id };
@@ -259,6 +264,7 @@
     if (state.type === "DROP") { btnSubmit.disabled = false; return; }
     // Appointment / Both → necesita slot
     btnSubmit.disabled = !(state.day && state.slot_id);
+    btnSubmit.hidden = btnSubmit.disabled;
   }
 
   // ------------- Animaciones helpers -------------

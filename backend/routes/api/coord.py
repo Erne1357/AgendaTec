@@ -325,3 +325,21 @@ def update_request_status(req_id: int):
     r.status = new_status
     db.session.commit()
     return jsonify({"ok": True})
+
+@api_coord_bp.post("/coord/change_password")
+@api_auth_required
+@api_role_required(["coordinator","admin"])
+def change_password():
+    coord_id = _current_coordinator_id()
+    if not coord_id:
+        return jsonify({"error":"coordinator_not_found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    new_password = data.get("new_password")
+    if not new_password:
+        return jsonify({"error":"missing_new_password"}), 400
+
+    # Aquí se actualizaría la contraseña en la base de datos
+    # ...
+
+    return jsonify({"ok": True})

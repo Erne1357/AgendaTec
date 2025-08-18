@@ -55,7 +55,10 @@
         </ul>
         <div class="d-flex">
           {% if current_user %}
-          <span class="navbar-text me-3 d-none d-sm-inline">{{ current_user.name or "" }}</span>
+          <!--Bloque de nombre con los colores al revez, nombre en azul y fondo en blanco-->
+          <span class="navbar-text text-white bg-primary px-3 py-1 rounded-3 me-2">
+            {{ current_user.name }}
+          </span>
           <button id="btnLogout" class="btn btn-outline-light btn-sm">Cerrar sesión</button>
           {% endif %}
         </div>
