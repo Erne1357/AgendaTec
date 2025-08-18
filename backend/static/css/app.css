@@ -5,7 +5,7 @@ body { min-height: 100dvh; }
 
 /* Bloque calendario: animación expand-fade */
 .expand-fade-enter {
-  opacity: 0;
+  opacity: 1;
   transform: scale(0.98);
   height: 0;
 }

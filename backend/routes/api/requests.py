@@ -1,6 +1,6 @@
 # routes/api/requests.py
 from datetime import date
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.exc import IntegrityError
 from utils.decorators import api_auth_required, api_role_required
 from models import db
@@ -10,7 +10,7 @@ from models.program_coordinator import ProgramCoordinator
 from models.time_slot import TimeSlot    # id, coordinator_id, day (DATE), start_time (TIME), is_booked
 from models.request import Request
 from models.appointment import Appointment
-
+import logging
 api_req_bp = Blueprint("api_requests", __name__)
 
 # Días permitidos
@@ -36,9 +36,11 @@ def my_requests():
                .limit(10).all())
 
     def to_dict(r: Request):
-        item = {"id": r.id, "type": r.type, "status": r.status, "created_at": r.created_at.isoformat()}
+        item = {"id": r.id, "type": r.type,"description": r.description ,"status": r.status, "created_at": r.created_at.isoformat()}
         if r.type == "APPOINTMENT":
             ap = db.session.query(Appointment).filter(Appointment.request_id == r.id).first()
+            current_app.logger.warning(f"Appointment found: {ap}")
+            current_app.logger.warning(f"Appointment status: {ap.status if ap else 'None'}")
             if ap:
                 item["appointment"] = {
                     "id": ap.id,
@@ -58,28 +60,20 @@ def my_requests():
 @api_auth_required
 @api_role_required(["student"])
 def create_request():
-    """
-    Body:
-      { "type": "DROP" }
-      o
-      { "type": "APPOINTMENT", "program_id": 1, "slot_id": 123 }
-    Reglas:
-      - una sola PENDING por alumno
-      - slot disponible y del programa elegido
-      - día del slot ∈ {2025-08-25,26,27}
-    """
     u = _get_current_student()
     data = request.get_json(silent=True) or {}
     req_type = (data.get("type") or "").upper()
 
+    current_app.logger.warning(f"Creating request for user {u.id} type={req_type} data={data}")
+
     exists = (db.session.query(Request.id)
-              .filter(Request.student_id == u.id, Request.status == "PENDING")
+              .filter(Request.student_id == u.id)
               .first())
     if exists:
         return jsonify({"error": "already_has_pending"}), 409
 
     if req_type == "DROP":
-        r = Request(student_id=u.id, program_id = int(data.get("program_id")) ,type="DROP", status="PENDING")
+        r = Request(student_id=u.id, program_id = int(data.get("program_id")) ,description = data.get("description"),type="DROP", status="PENDING")
         db.session.add(r)
         db.session.commit()
         return jsonify({"ok": True, "request_id": r.id})
@@ -122,7 +116,7 @@ def create_request():
             db.session.rollback()
             return jsonify({"error": "slot_conflict"}), 409
 
-        r = Request(student_id=u.id, program_id = data.get("program_id"), type="APPOINTMENT", status="PENDING")
+        r = Request(student_id=u.id, program_id = data.get("program_id"),description = data.get("description"), type="APPOINTMENT", status="PENDING")
         db.session.add(r)
         db.session.flush()
 

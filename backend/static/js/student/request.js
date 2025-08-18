@@ -12,6 +12,7 @@
     program_id: null,
     day: null,
     slot_id: null,
+    description: null,
   };
 
   // Elements
@@ -54,10 +55,8 @@
     stepType.hidden = true;
     if (t === "DROP") {
       typeHint.textContent = "Solo se generará la solicitud de baja. Verifica tus créditos.";
-    } else if (t === "APPOINTMENT") {
-      typeHint.textContent = "Se agendará una cita con tu coordinador para alta.";
     } else {
-      typeHint.textContent = "Se generará una solicitud y necesitarás cita para alta.";
+      typeHint.textContent = "Se agendará una cita con tu coordinador para alta.";
     }
 
     stepProgram.hidden = false;
@@ -118,14 +117,18 @@
   });
 
   // ------------- Paso 4: calendario + slots -------------
-    btnConfirmForms.addEventListener("click", () => {
-        if( state.type != "DROP") {
-        stepCalendar.hidden = false;
-        stepForms.hidden = true;
-        stepProgram.hidden = true;}
-    });
+  btnConfirmForms.addEventListener("click", () => {
+    state.description = getDescription();
+    if (!state.description || state.description === "" ) return;
+    if (state.type != "DROP") {
+      stepCalendar.hidden = false;
+      stepForms.hidden = true;
+      stepProgram.hidden = true;
+    }
 
-  
+  });
+
+
   $$(".day-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
       const day = btn.getAttribute("data-day");
@@ -135,7 +138,7 @@
     });
   });
 
-  $("#btnChangeDay").addEventListener("click",  () => {
+  $("#btnChangeDay").addEventListener("click", () => {
     // “Elegir otro día”: resetea slots y vuelve a mostrar botones de día
     state.day = null;
     state.slot_id = null;
@@ -162,7 +165,7 @@
   }
 
   function renderSlots(items) {
-    console.log("items : " +items)
+    console.log("items : " + items)
     state.slot_id = null;
     updateSubmitDisabled();
 
@@ -174,7 +177,7 @@
     items.forEach((s) => {
       const btn = document.createElement("button");
       btn.className = "btn btn-outline-secondary slot-btn";
-      btn.textContent = s.start_time + " - "+ s.end_time;
+      btn.textContent = s.start_time + " - " + s.end_time;
       btn.dataset.slot = s.slot_id;
       btn.addEventListener("click", () => {
         // marcar seleccionado
@@ -212,7 +215,7 @@
 
     let body;
     if (state.type === "DROP") {
-      body = { type: "DROP" , program_id : state.program_id };
+      body = { type: "DROP", program_id: state.program_id , description: state.description };
     } else {
       if (!state.day || !state.slot_id) {
         showToast("Selecciona un día y un horario.", "warn");
@@ -221,7 +224,8 @@
       body = {
         type: "APPOINTMENT",
         program_id: state.program_id,
-        slot_id: state.slot_id
+        slot_id: state.slot_id,
+        description: state.description
       };
     }
 
@@ -261,6 +265,7 @@
   function updateSubmitDisabled() {
     if (!state.type) { btnSubmit.disabled = true; return; }
     if (!state.program_id) { btnSubmit.disabled = true; return; }
+    if (!state.description) { btnSubmit.disabled = true; return; }
     if (state.type === "DROP") { btnSubmit.disabled = false; return; }
     // Appointment / Both → necesita slot
     btnSubmit.disabled = !(state.day && state.slot_id);
@@ -279,4 +284,68 @@
       el.classList.remove("expand-fade-enter", "expand-fade-enter-active");
     }, 220);
   }
+
+  function getDescription() {
+    // Captura valores
+    const materiaAlta = altaMateria.value.trim();
+    const noSeAlta = altaNoSe.checked;
+    const horarioAlta = altaHorario.value.trim();
+    const materiaBaja = bajaMateria.value.trim();
+    const horarioBaja = bajaHorario.value.trim();
+
+    // DROP: solo baja
+    if (state.type === "DROP") {
+      if (!materiaBaja || !horarioBaja) {
+        showToast("Completa materia y horario para la baja.", "warn");
+        return "";
+      }
+      return `Solicitud de baja de la materia ${materiaBaja} en el horario ${horarioBaja}.`;
+    }
+
+    // APPOINTMENT: solo alta
+    if (state.type === "APPOINTMENT") {
+      if (!noSeAlta && (!materiaAlta || !horarioAlta)) {
+        showToast("Completa materia y horario para la alta.", "warn");
+        return "";
+      }
+      if (noSeAlta) {
+        return "Solicitud de alta (materia y horario no especificados).";
+      }
+      return `Solicitud de alta de la materia ${materiaAlta} en el horario ${horarioAlta}.`;
+    }
+
+    // BOTH: alta y baja
+    if (state.type === "BOTH") {
+      let altaTxt = "";
+      let bajaTxt = "";
+      if (!materiaBaja || !horarioBaja) {
+        showToast("Completa materia y horario para la baja.", "warn");
+        return "";
+      }
+      bajaTxt = `baja de la materia ${materiaBaja} en el horario ${horarioBaja}`;
+      if (noSeAlta) {
+        altaTxt = "alta (materia y horario no especificados)";
+      } else {
+        if (!materiaAlta || !horarioAlta) {
+          showToast("Completa materia y horario para la alta.", "warn");
+          return "";
+        }
+        altaTxt = `alta de la materia ${materiaAlta} en el horario ${horarioAlta}`;
+      }
+      return `Se solicita ${bajaTxt} y ${altaTxt}.`;
+    }
+    return "";
+  }
+  bajaMateria.addEventListener("change", () => {
+    state.description = getDescription();
+    btnSubmit.hidden = !state.description || state.description === "";
+    updateSubmitDisabled();
+  });
+
+  bajaHorario.addEventListener("change", () => {
+    state.description = getDescription();
+    btnSubmit.hidden = !state.description || state.description === "";
+    updateSubmitDisabled();
+    console.log("Descripción" + state.description);
+  });
 })();
