@@ -5,6 +5,9 @@ from utils.jwt_tools import encode_jwt, decode_jwt
 from utils.decorators import login_required, role_required_page, api_auth_required, api_role_required   
 import logging
 
+from sockets import socketio
+from sockets.slots import SlotsNamespace
+
 def create_app():
     app = Flask(__name__, static_url_path="/static", static_folder="static", template_folder="templates")
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev")
@@ -14,12 +17,14 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.22233385"  
+    app.config["STATIC_VERSION"] = "1.0.22233386"  
 
 
     db.init_app(app)
-
     register_blueprints(app)
+
+    socketio.init_app(app)
+    socketio.on_namespace(SlotsNamespace("/slots"))
 
     @app.before_request
     def load_current_user():

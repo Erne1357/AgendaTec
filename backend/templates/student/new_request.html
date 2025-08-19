@@ -181,4 +181,6 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', filename='js/student/request.js') }}?v={{ static_version }}"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/sockets/slots_client.js') }}?v={{ static_version }}"></script>
 {% endblock %}
