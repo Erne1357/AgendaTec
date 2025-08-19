@@ -135,7 +135,31 @@
                                 <i class="bi bi-arrow-clockwise me-1"></i> Elegir otro día
                             </button>
                         </div>
-                        <div id="slotGrid" class="slot-grid"></div>
+
+                        <!-- Leyenda compacta -->
+                        <div class="small text-muted mb-2">
+                            <span class="me-3">
+                                <span class="d-inline-block rounded-circle bg-success me-1"
+                                    style="width:10px;height:10px;vertical-align:middle;"></span>
+                                Disponible
+                            </span>
+                            <span class="me-3">
+                                <span class="d-inline-block rounded-circle bg-primary me-1"
+                                    style="width:10px;height:10px;vertical-align:middle;"></span>
+                                Seleccionado
+                            </span>
+                            <span>
+                                <span class="d-inline-block rounded-circle bg-secondary me-1"
+                                    style="width:10px;height:10px;vertical-align:middle;"></span>
+                                En espera
+                            </span>
+                        </div>
+
+                        <!-- Tabs por hora -->
+                        <ul class="nav nav-pills mb-2 flex-wrap gap-1 btn-outline-light" id="hourTabs"></ul>
+
+                        <!-- Contenedor de slots -->
+                        <div id="slotGrid" class="d-flex flex-wrap gap-2"></div>
                     </div>
                 </div>
 

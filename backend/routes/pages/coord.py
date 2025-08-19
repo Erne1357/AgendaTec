@@ -14,8 +14,7 @@ def coord_index():
 @login_required
 @role_required_page(["coordinator","admin"])
 def coord_home_page():
-    # Página para configurar horario y generar slots (ya la tienes hecha)
-    return render_template("coord/home.html", title="Coordinador - Horario & Slots")
+    return render_template("coord/home.html", title="Coordinador - Dashboard")
 
 @coord_pages_bp.get("/appointments")
 @coord_pw_changed_required
@@ -36,4 +35,4 @@ def coord_drops_page():
 @login_required
 @role_required_page(["coordinator","admin"])
 def coord_slots_page():
-    return render_template("coord/slots.html", title="Coordinador - Horario y slots")
+    return render_template("coord/slots.html", title="Coordinador - Horario ")

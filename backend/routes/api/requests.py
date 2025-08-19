@@ -70,11 +70,11 @@ def create_request():
     req_type = (data.get("type") or "").upper()
 
 
-    exists = (db.session.query(Request.id)
+    exists = (db.session.query(Request)
               .filter(Request.student_id == u.id)
               .first())
-    if exists:
-        return jsonify({"error": "already_has_pending"}), 409
+    if exists and exists.status != "CANCELED":
+        return jsonify({"error": "already_has_petition"}), 409
 
     if req_type == "DROP":
         r = Request(student_id=u.id, program_id = int(data.get("program_id")) ,description = data.get("description"),type="DROP", status="PENDING")

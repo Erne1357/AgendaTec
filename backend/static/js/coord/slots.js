@@ -36,6 +36,8 @@
           showToast("El día no está permitido.", "warn");
         } else if (err.error === "invalid_time_range_or_slot_size") {
           showToast("Rango de horario inválido o tamaño de slot incompatible.", "warn");
+        } else if (err.error === "overlap_booked_slots_exist") {
+          showToast(`No se puede cambiar ese tramo: hay ${err.booked_count} slots reservados dentro del rango seleccionado.`, "warn");
         } else {
           showToast("Error al guardar configuración.", "error");
         }

@@ -13,6 +13,7 @@
     day: null,
     slot_id: null,
     description: null,
+    selectedHour: null,
   };
 
   // Elements
@@ -119,7 +120,7 @@
   // ------------- Paso 4: calendario + slots -------------
   btnConfirmForms.addEventListener("click", () => {
     state.description = getDescription();
-    if (!state.description || state.description === "" ) return;
+    if (!state.description || state.description === "") return;
     if (state.type != "DROP") {
       stepCalendar.hidden = false;
       stepForms.hidden = true;
@@ -165,27 +166,65 @@
 
   function renderSlots(items) {
     state.slot_id = null;
+    state.selectedHour = null;
     updateSubmitDisabled();
+
+    const slotGrid = $("#slotGrid");
+    const hourTabs = $("#hourTabs");
+    slotGrid.innerHTML = "";
+    hourTabs.innerHTML = "";
 
     if (!items.length) {
       slotGrid.innerHTML = `<div class="text-muted">No hay horarios disponibles para este día.</div>`;
       return;
     }
-    slotGrid.innerHTML = "";
-    items.forEach((s) => {
+
+    // 1) Agrupar por hora => { "09": [slots...], "10": [slots...] }
+    const byHour = {};
+    for (const s of items) {
+      const hh = (s.start_time || "").slice(0, 2); // "HH:MM" -> "HH"
+      if (!byHour[hh]) byHour[hh] = [];
+      byHour[hh].push(s);
+    }
+
+    // 2) Ordenar horas asc y construir tabs solo para horas con datos
+    const hours = Object.keys(byHour).sort((a, b) => Number(a) - Number(b));
+
+    hours.forEach((hh, idx) => {
+      const count = byHour[hh].length;
+      const li = document.createElement("li");
+      li.className = "nav-item";
+
       const btn = document.createElement("button");
-      btn.className = "btn btn-outline-secondary slot-btn";
-      btn.textContent = s.start_time + " - " + s.end_time;
-      btn.dataset.slot = s.slot_id;
+      btn.type = "button";
+      btn.className = "nav-link d-flex align-items-center gap-2 py-1 px-2";
+      btn.dataset.hour = hh;
+      btn.innerHTML = `<span>${hh}:00</span> <span class="badge text-bg-light">${count}</span>`;
+
       btn.addEventListener("click", () => {
-        // marcar seleccionado
-        $$(".slot-btn").forEach(b => b.classList.remove("active"));
+        // Activar tab
+        Array.from(hourTabs.querySelectorAll(".nav-link")).forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        state.slot_id = s.slot_id;
-        updateSubmitDisabled();
+        state.selectedHour = hh;
+
+        // Render de los slots de esa hora
+        renderHourSlots(byHour[hh]);
       });
-      slotGrid.appendChild(btn);
+
+      if (idx === 0) {
+        // Seleccionar la primera hora por defecto
+        btn.classList.add("active");
+        state.selectedHour = hh;
+      }
+
+      li.appendChild(btn);
+      hourTabs.appendChild(li);
     });
+
+    // 3) Pintar slots de la primera hora activa
+    if (state.selectedHour) {
+      renderHourSlots(byHour[state.selectedHour]);
+    }
   }
 
   // ------------- Envío -------------
@@ -211,7 +250,7 @@
 
     let body;
     if (state.type === "DROP") {
-      body = { type: "DROP", program_id: state.program_id , description: state.description };
+      body = { type: "DROP", program_id: state.program_id, description: state.description };
     } else {
       if (!state.day || !state.slot_id) {
         showToast("Selecciona un día y un horario.", "warn");
@@ -235,8 +274,8 @@
 
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        if (err.error === "already_has_pending") {
-          showToast("Ya tienes una solicitud pendiente.", "warn");
+        if (err.error === "already_has_petition") {
+          showToast("Ya tienes una solicitud.", "warn");
         } else if (err.error === "slot_unavailable") {
           showToast("El horario ya no está disponible.", "warn");
         } else if (err.error === "slot_conflict") {
@@ -343,4 +382,37 @@
     btnSubmit.hidden = !state.description || state.description === "";
     updateSubmitDisabled();
   });
+
+  function renderHourSlots(hourItems) {
+    const slotGrid = $("#slotGrid");
+    slotGrid.innerHTML = "";
+    state.slot_id = null;
+    updateSubmitDisabled();
+
+    hourItems
+      .sort((a, b) => (a.start_time > b.start_time ? 1 : -1))
+      .forEach((s) => {
+        const btn = document.createElement("button");
+        // Disponible → verde outline; seleccionado → verde sólido
+        btn.className = "btn btn-sm btn-outline-success slot-btn";
+        btn.textContent = `${s.start_time} - ${s.end_time}`;
+        btn.dataset.slot = s.slot_id;
+
+        btn.addEventListener("click", () => {
+          // marcar seleccionado
+          Array.from(document.querySelectorAll(".slot-btn")).forEach(b => {
+            b.classList.remove("active", "btn-success");
+            b.classList.add("btn-outline-success");
+          });
+          btn.classList.add("active", "btn-success");
+          btn.classList.remove("btn-outline-success");
+
+          state.slot_id = s.slot_id;
+          updateSubmitDisabled();
+        });
+
+        slotGrid.appendChild(btn);
+      });
+  }
+
 })();

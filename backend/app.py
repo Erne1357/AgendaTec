@@ -14,7 +14,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.2223337981"  
+    app.config["STATIC_VERSION"] = "1.0.22233385"  
 
 
     db.init_app(app)
@@ -69,7 +69,8 @@ def create_app():
             if "dashboard" in lbl: return "bi-grid"
             if "coordinador" in lbl: return "bi-person-gear"
             if "cita" in lbl: return "bi-calendar2-check"
-            if "drop" in lbl: return "bi-arrow-down-circle"
+            if "horario" in lbl: return "bi-clock"
+            if "bajas" in lbl: return "bi-arrow-down-circle"
             if "servicio social" in lbl: return "bi-people"
             if "inicio" in lbl: return "bi-house"
             if "mis solicitudes" in lbl: return "bi-file-earmark-text"
@@ -92,7 +93,7 @@ def create_app():
             ]
             coord = [
                 {"label": "Dashboard", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator", "admin"]},
-                {"label": "Horario & Slots", "endpoint": "coord_pages.coord_slots_page", "roles": ["coordinator", "admin"]},
+                {"label": "Horario ", "endpoint": "coord_pages.coord_slots_page", "roles": ["coordinator", "admin"]},
                 {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator", "admin"]},
                 {"label": "Bajas", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator", "admin"]},
             ]
