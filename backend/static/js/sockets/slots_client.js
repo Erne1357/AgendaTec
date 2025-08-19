@@ -9,7 +9,6 @@
   // Conecta al namespace /slots (mismo host)
   const socket = io("/slots", {
     withCredentials: true, // incluye cookies para que el server lea agendatec_token
-    transports: ["websocket"], // preferimos WS directo
   });
 
   window.__slotsSocket = socket; // útil en consola
@@ -30,7 +29,4 @@
   socket.on("left_day",   (p) => console.log("[WS] left_day", p));
   socket.on("slots_snapshot", (p) => console.log("[WS] snapshot", p));
 
-  // Helpers de prueba en consola:
-  window.joinDay = (day) => socket.emit("join_day", { day });
-  window.leaveDay = (day) => socket.emit("leave_day", { day });
 })();

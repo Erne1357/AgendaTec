@@ -11,6 +11,8 @@ from models.time_slot import TimeSlot    # id, coordinator_id, day (DATE), start
 from models.request import Request
 from models.appointment import Appointment
 import logging
+from sockets import socketio
+from utils.redis_conn import get_redis
 api_req_bp = Blueprint("api_requests", __name__)
 
 # Días permitidos
@@ -134,6 +136,21 @@ def create_request():
         )
         db.session.add(ap)
         db.session.commit()
+        try:
+            slot_day = str(slot.day)  # 'slot' ya lo tienes cargado arriba
+            room = f"day:{slot_day}"
+            socketio.emit("slot_booked", {
+                "slot_id": slot_id,
+                "day": slot_day,
+                "start_time": slot.start_time.strftime("%H:%M"),
+                "end_time": slot.end_time.strftime("%H:%M"),
+            }, to=room,namespace="/slots")
+            # Borrar hold si existía
+            redis_cli = get_redis()
+            redis_cli.delete(f"slot:{slot_id}:hold")
+        except Exception:
+            # No rompas el flujo si el broadcast falla
+            current_app.logger.exception("Failed to broadcast slot_booked")
         return jsonify({"ok": True, "request_id": r.id, "appointment_id": ap.id})
 
     except IntegrityError:
