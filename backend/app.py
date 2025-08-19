@@ -3,6 +3,10 @@ from flask import Flask, render_template, redirect, url_for, request,current_app
 from models import db
 from utils.jwt_tools import encode_jwt, decode_jwt
 from utils.decorators import login_required, role_required_page, api_auth_required, api_role_required   
+import logging
+
+from sockets import socketio
+from sockets.slots import SlotsNamespace
 
 def create_app():
     app = Flask(__name__, static_url_path="/static", static_folder="static", template_folder="templates")
@@ -13,11 +17,14 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.2"  
+    app.config["STATIC_VERSION"] = "1.0.22233386"  
+
 
     db.init_app(app)
-
     register_blueprints(app)
+
+    socketio.init_app(app)
+    socketio.on_namespace(SlotsNamespace("/slots"))
 
     @app.before_request
     def load_current_user():
@@ -59,57 +66,71 @@ def create_app():
         if g.current_user:
             return redirect(role_home(g.current_user.get("role")))
         return redirect(url_for("pages_auth.login_page"))
-
-
-
-    @app.get("/coord/home")
-    @login_required
-    @role_required_page(["coordinator"])
-    def coord_home():
-        return "Coordinator dashboard (placeholder)"
-
-    @app.get("/social/home")
-    @login_required
-    @role_required_page(["social_service"])
-    def social_home():
-        return "Social service dashboard (placeholder)"
     
     @app.context_processor
     def inject_globals():
+        def _icon_for(label: str) -> str:
+            lbl = (label or "").lower()
+            if "dashboard" in lbl: return "bi-grid"
+            if "coordinador" in lbl: return "bi-person-gear"
+            if "cita" in lbl: return "bi-calendar2-check"
+            if "horario" in lbl: return "bi-clock"
+            if "bajas" in lbl: return "bi-arrow-down-circle"
+            if "servicio social" in lbl: return "bi-people"
+            if "inicio" in lbl: return "bi-house"
+            if "mis solicitudes" in lbl: return "bi-file-earmark-text"
+            return "bi-grid"
+
+        def is_active(url: str) -> bool:
+            # activo si coincide exactamente o si la ruta actual cuelga de ese url
+            p = request.path
+            return p == url or p.startswith(url + "/")
+
         def nav_for(role: str | None):
-            # Estructura de menú basada en páginas. Puedes ajustar labels/orden.
-            base = [
-                # Entradas compartidas por múltiples roles
-                {"label": "Citas (Servicio Social)", "endpoint": "social_pages.social_home",
-                 "roles": ["social_service","coordinator","admin"]},
-                {"label": "Panel coordinador", "endpoint": "coord_pages.coord_home_page",
-                 "roles": ["coordinator","admin"]},
+            # ----- Definición del árbol de navegación -----
+            social = [
+                {"label": "Citas", "endpoint": "social_pages.social_home",
+                "roles": ["social_service"]}
             ]
-            # Estudiante
             student = [
                 {"label": "Inicio", "endpoint": "student_pages.student_home", "roles": ["student"]},
                 {"label": "Mis solicitudes", "endpoint": "student_pages.student_requests", "roles": ["student"]},
             ]
-            # Coordinador
             coord = [
-                {"label": "Mi horario / slots", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator","admin"]},
-                {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator","admin"]},
-                {"label": "Drops", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator","admin"]},
-            ]
-            # Social
-            social = [
-                {"label": "Citas (día)", "endpoint": "social_pages.social_home", "roles": ["social_service","coordinator","admin"]},
+                {"label": "Dashboard", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator", "admin"]},
+                {"label": "Horario ", "endpoint": "coord_pages.coord_slots_page", "roles": ["coordinator", "admin"]},
+                {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator", "admin"]},
+                {"label": "Bajas", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator", "admin"]},
             ]
 
-            all_items = base + student + coord + social
-            if not role:  # no logueado
+            all_items = student + coord + social
+            if not role:
                 return []
-            return [it for it in all_items if role in it["roles"]]
+
+            # ----- Filtrar por rol -----
+            filtered = [it for it in all_items if role in it["roles"]]
+
+            # ----- Quitar duplicados y enriquecer con url + icon -----
+            seen: set[tuple[str, str]] = set()
+            dedup_enriched: list[dict] = []
+            for it in filtered:
+                key = (it["label"], it["endpoint"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                dedup_enriched.append({
+                    "label": it["label"],
+                    "endpoint": it["endpoint"],
+                    "url": url_for(it["endpoint"]),
+                    "icon": _icon_for(it["label"]),
+                })
+            return dedup_enriched
 
         return {
             "current_user": g.current_user,
             "static_version": current_app.config.get("STATIC_VERSION", "1.0.0"),
-            "nav_for": nav_for
+            "nav_for": nav_for,
+            "is_active": is_active,
         }
     return app
 

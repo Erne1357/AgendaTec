@@ -1,5 +1,6 @@
 from functools import wraps
-from flask import g, request, redirect, url_for, jsonify
+from flask import g, request, redirect, url_for, jsonify, current_app
+import logging
 
 def login_required(view):
     @wraps(view)
@@ -46,3 +47,20 @@ def api_role_required(roles: list[str]):
             return view(*args, **kwargs)
         return wrapper
     return deco
+
+# Decorador para verificar si el coordinador debe cambiar su contraseña
+def coord_pw_changed_required(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        cu = g.get("current_user")
+        # Solo aplica para coordinadores
+        if cu and cu.get("role") == "coordinator":
+            # Debes tener una función que verifique el estado, por ejemplo:
+            from models import Coordinator
+            coord = Coordinator.query.filter_by(user_id=cu["sub"]).first()
+            current_app.logger.warning("Verificando si el coordinador debe cambiar su contraseña" + str(getattr(coord, "must_change_pw", False)) )
+            if coord and getattr(coord, "must_change_pw", False):
+                # Redirige a home del coordinador (donde está el modal)
+                return redirect(url_for("coord_pages.coord_home_page"))
+        return view(*args, **kwargs)
+    return wrapper

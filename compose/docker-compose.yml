@@ -23,6 +23,7 @@ services:
     env_file: ../.env
     volumes:
       - ../backend:/app/src
+      - ../database/CSV:/app/src/database/CSV
     depends_on:
       - postgres
       - redis

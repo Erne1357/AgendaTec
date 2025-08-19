@@ -1,6 +1,6 @@
 # routes/api/requests.py
 from datetime import date
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.exc import IntegrityError
 from utils.decorators import api_auth_required, api_role_required
 from models import db
@@ -10,14 +10,14 @@ from models.program_coordinator import ProgramCoordinator
 from models.time_slot import TimeSlot    # id, coordinator_id, day (DATE), start_time (TIME), is_booked
 from models.request import Request
 from models.appointment import Appointment
-
+import logging
 api_req_bp = Blueprint("api_requests", __name__)
 
 # Días permitidos
 ALLOWED_DAYS = {date(2025, 8, 25), date(2025, 8, 26), date(2025, 8, 27)}
 
 def _get_current_student():
-    uid = int(g.current_user["sub"])
+    uid = g.current_user["sub"]
     u = db.session.query(User).get(uid)
     return u
 
@@ -36,15 +36,22 @@ def my_requests():
                .limit(10).all())
 
     def to_dict(r: Request):
-        item = {"id": r.id, "type": r.type, "status": r.status, "created_at": r.created_at.isoformat()}
+        item = {"id": r.id, "type": r.type,"description": r.description ,"status": r.status, "created_at": r.created_at.isoformat()}
         if r.type == "APPOINTMENT":
             ap = db.session.query(Appointment).filter(Appointment.request_id == r.id).first()
             if ap:
+                sl = db.session.query(TimeSlot).get(ap.slot_id)
                 item["appointment"] = {
                     "id": ap.id,
                     "program_id": ap.program_id,
                     "coordinator_id": ap.coordinator_id,
-                    "time_slot_id": ap.time_slot_id,
+                    "slot": {
+                        "id": sl.id,
+                        "day": sl.day.isoformat(),
+                        "start_time": sl.start_time.isoformat(),
+                        "end_time": sl.end_time.isoformat(),  
+                        "is_booked": sl.is_booked
+                    },
                     "status": ap.status
                 }
         return item
@@ -58,28 +65,19 @@ def my_requests():
 @api_auth_required
 @api_role_required(["student"])
 def create_request():
-    """
-    Body:
-      { "type": "DROP" }
-      o
-      { "type": "APPOINTMENT", "program_id": 1, "slot_id": 123 }
-    Reglas:
-      - una sola PENDING por alumno
-      - slot disponible y del programa elegido
-      - día del slot ∈ {2025-08-25,26,27}
-    """
     u = _get_current_student()
     data = request.get_json(silent=True) or {}
     req_type = (data.get("type") or "").upper()
 
-    exists = (db.session.query(Request.id)
-              .filter(Request.student_id == u.id, Request.status == "PENDING")
+
+    exists = (db.session.query(Request)
+              .filter(Request.student_id == u.id)
               .first())
-    if exists:
-        return jsonify({"error": "already_has_pending"}), 409
+    if exists and exists.status != "CANCELED":
+        return jsonify({"error": "already_has_petition"}), 409
 
     if req_type == "DROP":
-        r = Request(student_id=u.id, type="DROP", status="PENDING")
+        r = Request(student_id=u.id, program_id = int(data.get("program_id")) ,description = data.get("description"),type="DROP", status="PENDING")
         db.session.add(r)
         db.session.commit()
         return jsonify({"ok": True, "request_id": r.id})
@@ -122,7 +120,7 @@ def create_request():
             db.session.rollback()
             return jsonify({"error": "slot_conflict"}), 409
 
-        r = Request(student_id=u.id, type="APPOINTMENT", status="PENDING")
+        r = Request(student_id=u.id, program_id = data.get("program_id"),description = data.get("description"), type="APPOINTMENT", status="PENDING")
         db.session.add(r)
         db.session.flush()
 
@@ -131,7 +129,7 @@ def create_request():
             student_id=u.id,
             program_id=program_id,
             coordinator_id=slot.coordinator_id,
-            time_slot_id=slot_id,
+            slot_id=slot_id,
             status="SCHEDULED"
         )
         db.session.add(ap)
@@ -158,7 +156,7 @@ def cancel_request(req_id: int):
     if r.type == "APPOINTMENT":
         ap = db.session.query(Appointment).filter(Appointment.request_id == r.id).first()
         if ap:
-            slot = db.session.query(TimeSlot).get(ap.time_slot_id)
+            slot = db.session.query(TimeSlot).get(ap.slot_id)
             if slot and slot.is_booked:
                 slot.is_booked = False
             ap.status = "CANCELED"

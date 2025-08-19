@@ -3,11 +3,14 @@
 {% block content %}
 <div class="card shadow-sm">
   <div class="card-body">
-    <h5 class="card-title">Mis solicitudes</h5>
+    <h5 class="card-title d-flex align-items-center gap-2">
+      <i class="bi bi-journal-text"></i> Mis solicitudes
+    </h5>
     <div id="reqPanel"></div>
+    
   </div>
 </div>
 {% endblock %}
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/student_requests.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='js/student/requests.js') }}?v={{ static_version }}"></script>
 {% endblock %}

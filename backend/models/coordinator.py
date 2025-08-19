@@ -8,6 +8,7 @@ class Coordinator(db.Model):
 
     contact_email = db.Column(db.Text)
     office_hours = db.Column(db.Text)
+    must_change_pw = db.Column(db.Boolean, nullable=False, server_default=db.text("TRUE"))
 
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.text("NOW()"))
     updated_at = db.Column(db.DateTime, nullable=False, server_default=db.text("NOW()"))

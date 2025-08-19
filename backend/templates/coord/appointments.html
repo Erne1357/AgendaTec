@@ -7,8 +7,9 @@
     <div class="card shadow-sm">
       <div class="card-body">
         <h5 class="card-title mb-3">Citas del día</h5>
+
         <div class="row g-2 mb-2">
-          <div class="col-6 col-sm-3">
+          <div class="col-12 col-sm-3">
             <label class="form-label">Día</label>
             <select class="form-select" id="apDay">
               <option value="2025-08-25">25 Ago</option>
@@ -16,19 +17,54 @@
               <option value="2025-08-27">27 Ago</option>
             </select>
           </div>
-          <div class="col-6 col-sm-3">
-            <label class="form-label">Estado</label>
-            <select class="form-select" id="apStatus">
-              <option value="">Todos</option>
-              <option>SCHEDULED</option><option>DONE</option><option>NO_SHOW</option><option>CANCELED</option>
+
+          <div class="col-12 col-sm-3">
+            <label class="form-label">Estado de solicitud</label>
+            <select class="form-select" id="reqStatus">
+              <option value="ALL">Todas</option>
+              <option value="PENDING" selected>Pendientes</option>
+              <option value="RESOLVED_SUCCESS">Resueltas</option>
+              <option value="RESOLVED_NOT_COMPLETED">No resueltas</option>
+              <option value="NO_SHOW">No asistió</option>
+              <option value="ATTENDED_OTHER_SLOT">Asistió en otro horario</option>
+              <option value="CANCELED">Canceladas</option>
             </select>
           </div>
+
+          <div class="col-12 col-sm-3">
+            <label class="form-label">Vista</label>
+            <div class="btn-group d-flex" role="group">
+              <button class="btn btn-outline-secondary active" id="btnViewList">Lista</button>
+              <button class="btn btn-outline-secondary" id="btnViewTable">Tabla</button>
+            </div>
+          </div>
+
           <div class="col-12 col-sm-3 d-grid">
             <label class="form-label d-none d-sm-block">&nbsp;</label>
             <button class="btn btn-outline-primary" id="btnLoadAppointments">Cargar</button>
           </div>
         </div>
+
         <div id="apList" class="table-responsive"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Detalles -->
+<div class="modal fade" id="reqDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title">Detalle de solicitud</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="reqDetailBody" class="small"></div>
+      </div>
+      <div class="modal-footer">
+        <div class="btn-group btn-group-sm me-auto" id="reqDetailActions"></div>
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cerrar</button>
       </div>
     </div>
   </div>

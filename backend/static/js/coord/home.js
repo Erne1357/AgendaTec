@@ -1,56 +1,47 @@
 // static/js/coord_home.js
-// Página: /coord/home  → Configurar horario y generar slots
+(async () => {
+    const modalEl = document.getElementById("forcePwModal");
+    const newPw = document.getElementById("newPw");
+    const btnSave = document.getElementById("btnSavePw");
+    const pwErr = document.getElementById("pwErr");
 
-(() => {
-  const $ = (sel) => document.querySelector(sel);
-  const cfgForm = $("#dayConfigForm");
-  const btnSave = $("#btnSaveCfg");
-  const cfgRes = $("#cfgResult");
-
-  cfgForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    btnSave.disabled = true;
-    cfgRes.textContent = "";
-
-    const body = {
-      day: $("#cfgDay").value,
-      start: $("#cfgStart").value,
-      end: $("#cfgEnd").value,
-      slot_minutes: parseInt($("#cfgMinutes").value, 10)
-    };
+    const modal = new bootstrap.Modal(modalEl, { backdrop: "static", keyboard: false });
 
     try {
-      const r = await fetch("/api/v1/coord/day-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(body)
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        if (err.error === "booked_slots_exist") {
-          showToast(`No se puede cambiar: ya hay ${err.booked_count} slots reservados ese día.`, "warn");
-        } else if (err.error === "cannot_modify_today_or_past") {
-          showToast("No puedes modificar el día actual o pasado.", "warn");
-        } else if (err.error === "day_not_allowed") {
-          showToast("El día no está permitido.", "warn");
-        } else if (err.error === "invalid_time_range_or_slot_size") {
-          showToast("Rango de horario inválido o tamaño de slot incompatible.", "warn");
-        } else {
-          showToast("Error al guardar configuración.", "error");
+        const r = await fetch("/api/v1/coord/password-state", { credentials: "include" });
+        if (r.ok) {
+            const { must_change } = await r.json();
+            console.log("Must change: " + must_change);
+            if (must_change) modal.show();
         }
-        return;
-      }
-      const data = await r.json();
-      cfgRes.textContent =
-        `Ventanas borradas: ${data.windows_deleted} | ` +
-        `Slots borrados: ${data.slots_deleted} | ` +
-        `Slots creados: ${data.slots_created}`;
-      showToast("Configuración guardada y slots generados.", "success");
-    } catch (e) {
-      showToast("No se pudo conectar.", "error");
-    } finally {
-      btnSave.disabled = false;
-    }
-  });
+    } catch { }
+
+    btnSave.addEventListener("click", async () => {
+        const v = (newPw.value || "").trim();
+        if (!/^\d{4}$/.test(v)) {
+            pwErr.classList.remove("d-none");
+            return;
+        }
+        pwErr.classList.add("d-none");
+        btnSave.disabled = true;
+
+        try {
+            const res = await fetch("/api/v1/coord/change_password", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ new_password: v })
+            });
+            if (!res.ok) throw 0;
+            showToast("Contraseña actualizada.", "success");
+            modal.hide();
+            // Empuja al flujo de slots si así lo quieres:
+            // window.location.href = "/coord/slots";
+        } catch {
+            showToast("No se pudo actualizar el NIP.", "error");
+        } finally {
+            btnSave.disabled = false;
+            newPw.value = "";
+        }
+    });
 })();
