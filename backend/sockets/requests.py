@@ -1,9 +1,16 @@
 # sockets/requests.py
-from flask import g, request
+from flask import g, request,current_app
 from flask_socketio import emit, join_room, leave_room
 from utils.socket_auth import current_user_from_environ
+import logging
 
 NAMESPACE = "/requests"
+
+def _room_social_ap_day(day: str) -> str:
+    return f"social:ap:{day}"
+
+def _room_social_ap_day_prog(day: str, program_id: int) -> str:
+    return f"social:ap:{day}:prog:{program_id}"
 
 def _room_ap_day(coord_id: int, day: str) -> str:
     return f"coord:ap:{coord_id}:{day}"
@@ -71,20 +78,21 @@ def register_request_events(socketio):
 # --------- Helpers para emitir desde rutas ----------
 def broadcast_appointment_created(socketio, coord_id: int, day: str, payload: dict):
     socketio.emit("appointment_created", payload, to=_room_ap_day(coord_id, day), namespace=NAMESPACE)
+    try:
+        program_id = payload.get("program_id")
+        current_app.logger.warning(f"Payload : {payload}")
+        socketio.emit("appointment_created", payload, to=_room_social_ap_day(day), namespace=NAMESPACE)
+        if program_id:
+            socketio.emit("appointment_created", payload,
+                          to=_room_social_ap_day_prog(day, int(program_id)), namespace=NAMESPACE)
+    except Exception:
+        current_app.logger.warning("Error created : ")
+        pass
 
 def broadcast_drop_created(socketio, coord_id: int, payload: dict):
     socketio.emit("drop_created", payload, to=_room_drops(coord_id), namespace=NAMESPACE)
 
 def broadcast_request_status_changed(socketio, coord_id: int, payload: dict):
-    """
-    payload sugerido:
-    {
-      "type": "APPOINTMENT" | "DROP",
-      "request_id": int,
-      "new_status": str,
-      "day": "YYYY-MM-DD" | None
-    }
-    """
     # Emitimos a ambas salas potenciales (citas del día y drops). El cliente decide si refresca.
     day = payload.get("day")
     if day:
@@ -92,3 +100,14 @@ def broadcast_request_status_changed(socketio, coord_id: int, payload: dict):
                       to=_room_ap_day(coord_id, day), namespace=NAMESPACE)
     socketio.emit("request_status_changed", payload,
                   to=_room_drops(coord_id), namespace=NAMESPACE)
+    try:
+        if payload.get("type") == "APPOINTMENT" and day:
+            program_id = payload.get("program_id")
+            current_app.logger.warning(f"Payload : {payload}")
+            socketio.emit("request_status_changed", payload, to=_room_social_ap_day(day), namespace=NAMESPACE)
+            if program_id:
+                socketio.emit("request_status_changed", payload,
+                              to=_room_social_ap_day_prog(day, int(program_id)), namespace=NAMESPACE)
+    except Exception :
+        current_app.logger.warning("Error change : ")
+        pass

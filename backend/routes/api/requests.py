@@ -204,6 +204,7 @@ def create_request():
 @api_role_required(["student"])
 def cancel_request(req_id: int):
     u = _get_current_student()
+    slot_day = 0
     r = (db.session.query(Request)
          .filter(Request.id == req_id, Request.student_id == u.id)
          .first())
@@ -217,13 +218,13 @@ def cancel_request(req_id: int):
         if ap:
             slot = db.session.query(TimeSlot).get(ap.slot_id)
             if slot and slot.is_booked:
+                slot_day = slot.day
                 slot.is_booked = False
             ap.status = "CANCELED"
 
     r.status = "CANCELED"
     db.session.commit()
     try:
-        slot_day = str(slot.day)  # 'slot' ya lo tienes cargado arriba
         room = f"day:{slot_day}"
         socketio.emit("slot_released", {
             "slot_id": ap.slot_id,
@@ -246,7 +247,8 @@ def cancel_request(req_id: int):
                 "type": "APPOINTMENT",
                 "request_id": r.id,
                 "new_status": r.status,  # CANCELED
-                "day": day_str
+                "day": day_str,
+                "program_id" : r.program.id
             }
             # ap existe si era cita
             if 'ap' in locals() and ap:

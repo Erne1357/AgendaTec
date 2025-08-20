@@ -161,7 +161,7 @@ function getCoordId() {
           <div class="small text-truncate" style="max-width:420px" title="${escapeHtml(it.description || "Sin descripción")}">${escapeHtml(it.description || "Sin descripción")}</div>
         </td>
         <td class="text-end">
-          <button class="btn btn-sm btn-primary ms-1" data-open="${it.request_id}">Ver detalla y responder </button>
+          <button class="btn btn-sm btn-primary ms-1" data-open="${it.request_id}">Ver detalles y responder </button>
         </td>
       </tr>`;
     }

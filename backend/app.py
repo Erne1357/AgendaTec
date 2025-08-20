@@ -15,7 +15,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.22233449"  
+    app.config["STATIC_VERSION"] = "1.0.222334496"  
 
 
     db.init_app(app)
@@ -140,12 +140,14 @@ def register_blueprints(app):
     from routes.api.requests import api_req_bp
     from routes.api.slots import api_slots_bp
     from routes.api.coord import api_coord_bp
+    from routes.api.social import api_social_bp
     app.register_blueprint(api_auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(api_programs_bp, url_prefix="/api/v1")
     app.register_blueprint(api_avail_bp, url_prefix="/api/v1")
     app.register_blueprint(api_req_bp, url_prefix="/api/v1")
     app.register_blueprint(api_slots_bp, url_prefix="/api/v1")
     app.register_blueprint(api_coord_bp, url_prefix="/api/v1")
+    app.register_blueprint(api_social_bp,url_prefix="/api/v1")
 
     #Register blueprints for pages
     from routes.pages.auth import pages_auth_bp

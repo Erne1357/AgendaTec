@@ -354,7 +354,8 @@ def update_appointment(ap_id: int):
         "type": "APPOINTMENT",
         "request_id": ap.request_id,
         "new_status": req.status,
-        "day": str(slot.day) if slot else None
+        "day": str(slot.day) if slot else None,
+        "program_id" : req.program.id
     }
     broadcast_request_status_changed(socketio, coord_id, payload)
     return jsonify({"ok": True})
@@ -477,7 +478,8 @@ def update_request_status(req_id: int):
         "type": r.type,
         "request_id": r.id,
         "new_status": r.status,
-        "day": day
+        "day": day,
+        "program_id" : r.program.id
     }
     broadcast_request_status_changed(socketio, coord_id, payload)
     return jsonify({"ok": True})
