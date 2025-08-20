@@ -74,6 +74,41 @@ def register_request_events(socketio):
             return
         join_room(_room_drops(coord_id))
         emit("joined_drops", {"coord_id": coord_id})
+    @socketio.on("join_social_ap_day", namespace=NAMESPACE)
+    def on_join_social_ap_day(data):
+        day = (data or {}).get("day") or ""
+        program_id = (data or {}).get("program_id")
+        if not day:
+            emit("error", {"error": "invalid_day"})
+            return
+        if program_id:
+            try:
+                pid = int(program_id)
+            except Exception:
+                emit("error", {"error": "invalid_program_id"})
+                return
+            join_room(_room_social_ap_day_prog(day, pid))
+        else:
+            join_room(_room_social_ap_day(day))
+        emit("joined_social_ap_day", {"day": day, "program_id": program_id})
+
+    @socketio.on("leave_social_ap_day", namespace=NAMESPACE)
+    def on_leave_social_ap_day(data):
+        day = (data or {}).get("day") or ""
+        program_id = (data or {}).get("program_id")
+        if not day:
+            emit("error", {"error": "invalid_day"})
+            return
+        if program_id:
+            try:
+                pid = int(program_id)
+            except Exception:
+                emit("error", {"error": "invalid_program_id"})
+                return
+            leave_room(_room_social_ap_day_prog(day, pid))
+        else:
+            leave_room(_room_social_ap_day(day))
+        emit("left_social_ap_day", {"day": day, "program_id": program_id})
 
 # --------- Helpers para emitir desde rutas ----------
 def broadcast_appointment_created(socketio, coord_id: int, day: str, payload: dict):

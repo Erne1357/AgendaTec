@@ -115,11 +115,6 @@
           $("#btnLoadSS")?.click();
         }
       });
-      s.on("join_social_ap_day", (day, program_id) => {
-        console.log("Se unio a una sala ");
-        console.log("day : " + day);
-        console.log("program_id" + program_id)
-      });
     };
     tryBind();
   })();
