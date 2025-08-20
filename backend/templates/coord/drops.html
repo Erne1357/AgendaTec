@@ -52,5 +52,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/sockets/requests_client.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='js/coord/drops.js') }}?v={{ static_version }}"></script>
 {% endblock %}

@@ -14,6 +14,8 @@ from models.time_slot import TimeSlot
 from models.request import Request
 from models.appointment import Appointment
 from utils.security import verify_nip, hash_nip
+from sockets import socketio
+from sockets.requests import broadcast_request_status_changed
 
 api_coord_bp = Blueprint("api_coord", __name__)
 
@@ -244,6 +246,8 @@ def coord_appointments():
 
     if req_status:
         base = base.filter(Request.status == req_status)
+    else: 
+        base = base.filter(Request.status != "CANCELED")
     if program_id:
         try:
             pid = int(program_id)
@@ -270,7 +274,7 @@ def coord_appointments():
             "request_id": req.id,
             "program": {"id": prog.id, "name": prog.name},
             "description": req.description,
-            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number},
+            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number, "username" : stu.username},
             "slot": {"day": str(slot.day),
                      "start_time": slot.start_time.strftime("%H:%M"),
                      "end_time": slot.end_time.strftime("%H:%M")},
@@ -293,7 +297,7 @@ def coord_appointments():
             "request_id": req.id,
             "program": {"id": prog.id, "name": prog.name},
             "description": req.description,
-            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number},
+            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number, "username" : stu.username},
             "request_status": req.status
         }
     for s in ts_q.all():
@@ -345,6 +349,14 @@ def update_appointment(ap_id: int):
 
     ap.status = new_status
     db.session.commit()
+    slot = db.session.query(TimeSlot).get(ap.slot_id)
+    payload = {
+        "type": "APPOINTMENT",
+        "request_id": ap.request_id,
+        "new_status": req.status,
+        "day": str(slot.day) if slot else None
+    }
+    broadcast_request_status_changed(socketio, coord_id, payload)
     return jsonify({"ok": True})
 
 # ----------------- DROPS -----------------
@@ -453,6 +465,21 @@ def update_request_status(req_id: int):
                     slot.is_booked = False
 
     db.session.commit()
+    day = None
+    if r.type == "APPOINTMENT":
+        ap = db.session.query(Appointment).filter(Appointment.request_id == r.id,
+                                                Appointment.coordinator_id == coord_id).first()
+        if ap:
+            s = db.session.query(TimeSlot).get(ap.slot_id)
+            day = str(s.day) if s else None
+
+    payload = {
+        "type": r.type,
+        "request_id": r.id,
+        "new_status": r.status,
+        "day": day
+    }
+    broadcast_request_status_changed(socketio, coord_id, payload)
     return jsonify({"ok": True})
 
 @api_coord_bp.get("/coord/password-state")

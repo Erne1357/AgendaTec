@@ -21,8 +21,8 @@
           <div class="col-12 col-sm-3">
             <label class="form-label">Estado de solicitud</label>
             <select class="form-select" id="reqStatus">
-              <option value="ALL">Todas</option>
-              <option value="PENDING" selected>Pendientes</option>
+              <option value="ALL" selected>Todas</option>
+              <option value="PENDING" >Pendientes</option>
               <option value="RESOLVED_SUCCESS">Resueltas</option>
               <option value="RESOLVED_NOT_COMPLETED">No resueltas</option>
               <option value="NO_SHOW">No asistió</option>
@@ -72,5 +72,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/sockets/requests_client.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='js/coord/appointments.js') }}?v={{ static_version }}"></script>
 {% endblock %}

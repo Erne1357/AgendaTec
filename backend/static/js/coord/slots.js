@@ -46,8 +46,8 @@
       const data = await r.json();
       cfgRes.textContent =
         `Ventanas borradas: ${data.windows_deleted} | ` +
-        `Slots borrados: ${data.slots_deleted} | ` +
-        `Slots creados: ${data.slots_created}`;
+        `Horarios borrados: ${data.slots_deleted} | ` +
+        `Horarios creados: ${data.slots_created}`;
       showToast("Configuración guardada y slots generados.", "success");
     } catch (e) {
       showToast("No se pudo conectar.", "error");

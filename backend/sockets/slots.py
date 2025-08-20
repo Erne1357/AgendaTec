@@ -146,3 +146,4 @@ def register_slot_events(socketio):
                 to=_room_for_day(day), namespace=NAMESPACE)
         else:
             emit("release_hold_ack", {"ok": False, "error": "not_holder"})
+    socketio
