@@ -12,8 +12,8 @@
           <div class="col-12 col-sm-3">
             <label class="form-label">Estado</label>
             <select class="form-select" id="dropStatus">
-              <option value="ALL">Todas</option>
-              <option value="PENDING" selected>Pendientes</option>
+              <option value="ALL" selected>Todas</option>
+              <option value="PENDING">Pendientes</option>
               <option value="RESOLVED_SUCCESS">Resueltas</option>
               <option value="RESOLVED_NOT_COMPLETED">No resueltas</option>
               <option value="CANCELED">Canceladas</option>
@@ -41,6 +41,11 @@
       </div>
       <div class="modal-body">
         <div id="dropDetailBody" class="small"></div>
+        <div class="mt-3">
+          <label for="dropCoordComment" class="form-label small">Comentario (opcional)</label>
+          <textarea id="dropCoordComment" class="form-control" rows="3" +
+            placeholder="Escribe un comentario para el alumno (opcional)"></textarea>
+        </div>
       </div>
       <div class="modal-footer">
         <div class="btn-group btn-group-sm me-auto" id="dropDetailActions"></div>

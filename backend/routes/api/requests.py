@@ -14,6 +14,8 @@ import logging
 from sockets import socketio
 from utils.redis_conn import get_redis
 from sockets.requests import broadcast_appointment_created, broadcast_drop_created, broadcast_request_status_changed
+from utils.notify import create_notification
+from sockets.notifications import push_notification
 api_req_bp = Blueprint("api_requests", __name__)
 
 # Días permitidos
@@ -39,7 +41,7 @@ def my_requests():
                .limit(10).all())
 
     def to_dict(r: Request):
-        item = {"id": r.id, "type": r.type,"description": r.description ,"status": r.status, "created_at": r.created_at.isoformat()}
+        item = {"id": r.id, "type": r.type,"description": r.description ,"status": r.status, "created_at": r.created_at.isoformat(), "comment" : r.coordinator_comment}
         if r.type == "APPOINTMENT":
             ap = db.session.query(Appointment).filter(Appointment.request_id == r.id).first()
             if ap:
@@ -89,7 +91,7 @@ def create_request():
         db.session.add(r)
         db.session.commit()
 
-        # +++ NUEVO: avisar a TODOS los coordinadores vinculados al programa
+        #  Avisar a TODOS los coordinadores vinculados al programa
         try:
             coord_ids = [
                 row[0] for row in db.session.query(ProgramCoordinator.coordinator_id)
@@ -105,7 +107,22 @@ def create_request():
                 broadcast_drop_created(socketio, cid, payload)
         except Exception:
             current_app.logger.exception("Failed to broadcast drop_created")
-
+        
+        #Enviar la notificación al alumno
+        try:
+            n = create_notification(
+                user_id=u.id,
+                type="DROP_CREATED",
+                title="Solicitud de baja creada",
+                body="Tu solicitud de baja fue registrada.",
+                data={"request_id": r.id},
+                source_request_id=r.id,
+                program_id=r.program_id
+            )
+            db.session.commit()
+            push_notification(socketio, u.id, n.to_dict())
+        except Exception:
+            current_app.logger.exception("Failed to create/push DROP notification")
         return jsonify({"ok": True, "request_id": r.id})
 
     if req_type != "APPOINTMENT":
@@ -192,6 +209,24 @@ def create_request():
         except Exception:
             current_app.logger.exception("Failed to broadcast appointment_created")
 
+        # Notificar al alumno
+        try:
+            n = create_notification(
+                user_id=u.id,
+                type="APPOINTMENT_CREATED",
+                title="Cita agendada",
+                body=f"{slot_day} {slot.start_time.strftime('%H:%M')}–{slot.end_time.strftime('%H:%M')}",
+                data={"request_id": r.id, "appointment_id": ap.id, "day": slot_day},
+                source_request_id=r.id,
+                source_appointment_id=ap.id,
+                program_id=program_id
+            )
+            db.session.commit()
+            push_notification(socketio, u.id, n.to_dict())
+        except Exception:
+            current_app.logger.exception("Failed to create/push APPOINTMENT notification")
+
+
         return jsonify({"ok": True, "request_id": r.id, "appointment_id": ap.id})
         
 
@@ -269,4 +304,21 @@ def cancel_request(req_id: int):
                 broadcast_request_status_changed(socketio, cid, payload)
     except Exception:
         current_app.logger.exception("Failed to broadcast request_status_changed")
+    
+    #Notificar al alumno sobre su cancelación
+    try:
+        n = create_notification(
+            user_id=u.id,
+            type="APPOINTMENT_CANCELED" if r.type == "APPOINTMENT" else "REQUEST_STATUS_CHANGED",
+            title="Solicitud cancelada",
+            body="Has cancelado tu solicitud.",
+            data={"request_id": r.id},
+            source_request_id=r.id,
+            program_id=r.program_id
+        )
+        db.session.commit()
+        push_notification(socketio, u.id, n.to_dict())
+    except Exception:
+        current_app.logger.exception("Failed to create/push CANCEL notification")
+    
     return jsonify({"ok": True})

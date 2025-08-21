@@ -1,7 +1,25 @@
 // static/js/student/requests.js (REEMPLAZO COMPLETO)
 (async () => {
   const panel = document.getElementById("reqPanel");
-
+  const RELEVANT_TYPES = new Set([
+    "REQUEST_STATUS_CHANGED",    // cambio de estado por coordinador
+    "APPOINTMENT_CREATED",       // cuando se agenda la cita
+    "APPOINTMENT_CANCELED",      // cancelación
+    "DROP_CREATED"               // solicitud de baja creada
+  ]);
+  let __reloadTimer = null;
+  const scheduleReload = () => {
+    clearTimeout(__reloadTimer);
+    __reloadTimer = setTimeout(() => load().catch(() => { }), 300); // debounced
+  };
+  document.addEventListener("notif:push", (e) => {
+    const t = e?.detail?.type;
+    if (RELEVANT_TYPES.has(t)) {
+      // Opcional: feedback mínimo en consola
+      console.log("[Mis solicitudes] notif -> reload:", t, e.detail);
+      scheduleReload();
+    }
+  });
   // --- Helpers de mapeo a español (UI) ---
   const mapType = (t) => ({
     "APPOINTMENT": "CITA",
@@ -61,7 +79,7 @@
 
       const activeHtml = renderActive(data.active);
       const historyHtml = renderHistory(data.history || []);
-
+      console.log("Data  : " + JSON.stringify(data));
       panel.innerHTML = `
         <div class="d-flex flex-column gap-3">
           ${activeHtml}
@@ -151,10 +169,10 @@
 
           <div class="mt-3 d-flex gap-2">
             ${canCancel ? btn("Cancelar solicitud", {
-              id: "btnCancelRequest",
-              cls: "btn btn-sm btn-outline-danger",
-              attrs: `data-id="${active.id}"`
-            }) : ""}
+      id: "btnCancelRequest",
+      cls: "btn btn-sm btn-outline-danger",
+      attrs: `data-id="${active.id}"`
+    }) : ""}
           </div>
         </div>
       </div>
@@ -181,11 +199,13 @@
       const t = mapType(h.type);
       const s = mapReqStatus(h.status);
       const when = fmtDate(h.created_at);
+      const comment = h.comment;
       const tone = toneForStatus(h.status);
       return `
         <li class="list-group-item d-flex justify-content-between align-items-center">
           <div class="d-flex flex-column">
             <span class="fw-semibold">${t}</span>
+            <span class="small text-muted">${comment ? "Comentarios : " + comment : ""}</span>
             <span class="small text-muted">${when}</span>
           </div>
           ${badge(s, tone)}

@@ -122,7 +122,7 @@ function getCoordId() {
         <td><span class="badge text-bg-${statusTone(st)}">${statusES(st)}</span></td>
         <td class="text-truncate" style="max-width:360px;" title="${escapeHtml(it.description || "Sin descripción")}">${escapeHtml(it.description || "Sin descripción")}</td>
         <td class="text-end">
-          <button class="btn btn-sm btn-primary ms-1" data-open="${it.request_id}">Ver datalle y responder</button>
+          <button class="btn btn-sm btn-primary ms-1" data-open="${it.request_id}">Ver datalles y responder</button>
         </td>
       </tr>`;
     }
@@ -142,10 +142,10 @@ function getCoordId() {
       if (!s.appointment) {
         html += `<tr>
           <td>${s.start}–${s.end}</td>
+          <td class="text-muted">Libre</td>
           <td class="text-muted">—</td>
           <td class="text-muted">—</td>
-          <td class="text-muted">—</td>
-          <td class="text-end text-muted small">Libre</td>
+          <td class="text-end text-muted small">—</td>
         </tr>`;
         continue;
       }
@@ -186,6 +186,9 @@ function getCoordId() {
     if (act) {
       const id = act.getAttribute("data-req");
       const st = act.getAttribute("data-st");
+      const commentEl = document.getElementById("reqCoordComment");
+      const coordComment = (commentEl?.value || "").trim();
+
       const label = {
         "RESOLVED_SUCCESS": "Marcar resuelta",
         "RESOLVED_NOT_COMPLETED": "Marcar no resuelta",
@@ -194,7 +197,7 @@ function getCoordId() {
         "CANCELED": "Cancelar solicitud"
       }[st] || `Cambiar a ${st}`;
       if (!confirm(`${label} (#${id})`)) return;
-      await patchRequest(id, st);
+      await patchRequest(id, st, coordComment);
       $("#btnLoadAppointments").click();
       return;
     }
@@ -206,16 +209,23 @@ function getCoordId() {
     }
   });
 
-  async function patchRequest(reqId, newStatus) {
+  async function patchRequest(reqId, newStatus,coordComment) {
     try {
       const r = await fetch(`/api/v1/coord/requests/${reqId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify(
+          coordComment ? { status: newStatus,coordinator_comment : coordComment } 
+          : {status : newStatus}
+        )
       });
       if (!r.ok) throw new Error();
       showToast("Estado de solicitud actualizado.", "success");
+      try{
+        const modalEl = document.getElementById("reqDetailModal");
+        bootstrap.Modal.getInstance(modalEl)?.hide();
+      }catch {}
     } catch {
       showToast("No se pudo actualizar el estado.", "error");
     }
@@ -246,6 +256,8 @@ function getCoordId() {
           <div class="mb-2"><strong>Descripción:</strong><br>${escapeHtml(it.description || "Sin descripción")}</div>
         `;
         actions.innerHTML = actionBtns(it.request_id);
+        const commentEl = document.getElementById("reqCoordComment");
+        if(commentEl) commentEl.value = it.coordinator_comment || "";
       }
       const modal = new bootstrap.Modal(document.getElementById("reqDetailModal"));
       modal.show();

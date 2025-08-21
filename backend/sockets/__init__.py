@@ -12,8 +12,10 @@ socketio = SocketIO(
 
 from .slots import register_slot_events
 from .requests import register_request_events
+from .notifications import register_notification_events
 def init_socketio(app):
     socketio.init_app(app)
     register_slot_events(socketio)
     register_request_events(socketio)
+    register_notification_events(socketio)
     return socketio

@@ -152,6 +152,8 @@
           <button class="btn btn-outline-warning"  data-drop="${it.id}" data-st="RESOLVED_NOT_COMPLETED">No resuelta</button>
           <button class="btn btn-outline-danger"   data-drop="${it.id}" data-st="CANCELED">Cancelar</button>
         `;
+        const cEl = document.getElementById("dropCoordComment");
+        if (cEl) cEl.value = it.coordinator_comment || it.comment || "";
       }
 
       const modal = new bootstrap.Modal(document.getElementById("dropDetailModal"));
@@ -167,6 +169,8 @@
     if (!act) return;
     const id = act.getAttribute("data-drop");
     const st = act.getAttribute("data-st");
+    const coordComment = (document.getElementById("dropCoordComment")?.value || "").trim();
+
     const label = {
       "RESOLVED_SUCCESS": "Marcar resuelta",
       "RESOLVED_NOT_COMPLETED": "Marcar no resuelta",
@@ -180,7 +184,9 @@
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ status: st })
+        body: JSON.stringify(
+          coordComment ? { status: st, coordinator_comment: coordComment } : { status: st }
+        )
       });
       if (!r.ok) throw new Error();
       showToast("Estado de solicitud actualizado.", "success");

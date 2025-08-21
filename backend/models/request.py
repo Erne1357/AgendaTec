@@ -19,6 +19,7 @@ class Request(db.Model):
     type = db.Column(request_type_pg_enum, nullable=False)
     description = db.Column(db.Text)
     status = db.Column(request_status_pg_enum, nullable=False, server_default="PENDING")
+    coordinator_comment = db.Column(db.Text)
 
     created_at = db.Column(db.DateTime, nullable=False, server_default=db.text("NOW()"))
     updated_at = db.Column(db.DateTime, nullable=False, server_default=db.text("NOW()"))

@@ -1,6 +1,6 @@
 # routes/api/coord.py
 from datetime import datetime, date, timedelta
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g,current_app
 from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from utils.decorators import api_auth_required, api_role_required
@@ -16,6 +16,8 @@ from models.appointment import Appointment
 from utils.security import verify_nip, hash_nip
 from sockets import socketio
 from sockets.requests import broadcast_request_status_changed
+from utils.notify import create_notification
+from sockets.notifications import push_notification
 
 api_coord_bp = Blueprint("api_coord", __name__)
 
@@ -274,6 +276,7 @@ def coord_appointments():
             "request_id": req.id,
             "program": {"id": prog.id, "name": prog.name},
             "description": req.description,
+            "coordinator_comment" : req.coordinator_comment,
             "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number, "username" : stu.username},
             "slot": {"day": str(slot.day),
                      "start_time": slot.start_time.strftime("%H:%M"),
@@ -419,6 +422,7 @@ def coord_drops():
         "status": r.status,
         "description": r.description,
         "created_at": r.created_at.isoformat(),
+        "comment" : r.coordinator_comment,
         "student": {"id": u.id, "full_name": u.full_name, "control_number": u.control_number}
     } for r, u in rows]
 
@@ -442,6 +446,9 @@ def update_request_status(req_id: int):
     if new_status not in allowed:
         return jsonify({"error":"invalid_status"}), 400
 
+    if "coordinator_comment" in data:
+        comment = (data.get("coordinator_comment")).strip()
+        r.coordinator_comment = comment or None
     # Solo permitir que el coordinador cambie requests asociados a sus programas (si aplica)
     # Nota: si necesitas forzar scope, valida con ProgramCoordinator.
     # if r.program_id not in _coord_program_ids(coord_id):
@@ -449,7 +456,6 @@ def update_request_status(req_id: int):
 
     # Actualizar estado de la solicitud
     r.status = new_status
-
     # Si es APPOINTMENT, reflejar en Appointment.status y liberar slot cuando aplique
     if r.type == "APPOINTMENT":
         ap = db.session.query(Appointment).filter(Appointment.request_id == r.id,
@@ -482,6 +488,34 @@ def update_request_status(req_id: int):
         "program_id" : r.program.id
     }
     broadcast_request_status_changed(socketio, coord_id, payload)
+    try:
+        stu_id = db.session.query(User.id).filter(User.id == Request.student_id, Request.id == r.id).scalar()
+        if stu_id:
+            title_map = {
+                "RESOLVED_SUCCESS": "Tu solicitud fue atendida y resuelta",
+                "RESOLVED_NOT_COMPLETED": "Tu solicitud fue atendida pero no se resolvió",
+                "NO_SHOW": "Marcado como no asistió",
+                "ATTENDED_OTHER_SLOT": "Asististe en otro horario",
+                "CANCELED": "Tu solicitud fue cancelada"
+            }
+            type_map = {
+                "APPOINTMENT" : "CITA",
+                "DROP" : "BAJA",
+            }
+            n = create_notification(
+                user_id=stu_id,
+                type="REQUEST_STATUS_CHANGED",
+                title=title_map.get(new_status, "Estado de solicitud actualizado"),
+                body="Solicitud : " +  type_map.get(r.type, "") + 
+                (("\nComentarios : " +  r.coordinator_comment ) if r.coordinator_comment else " "),
+                data={"request_id": r.id, "status": new_status},
+                source_request_id=r.id,
+                program_id=r.program_id
+            )
+            db.session.commit()
+            push_notification(socketio, stu_id, n.to_dict())
+    except Exception:
+        current_app.logger.exception("Failed to create/push status-change notification")
     return jsonify({"ok": True})
 
 @api_coord_bp.get("/coord/password-state")
