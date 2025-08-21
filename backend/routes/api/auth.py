@@ -12,9 +12,8 @@ def api_login():
     nip    = (data.get("nip","") or "").strip()
 
     is_8_digits = raw_id.isdigit() and len(raw_id) == 8
-    nip_ok = nip.isdigit() and len(nip) == 4
 
-    if not nip_ok or not raw_id:
+    if not raw_id:
         return jsonify({"error":"invalid_format"}), 400
 
     # Si son 8 dígitos → alumno por número de control; si no → staff por username

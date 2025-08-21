@@ -586,10 +586,15 @@
     if (!state.type) { btnSubmit.disabled = true; return; }
     if (!state.program_id) { btnSubmit.disabled = true; return; }
     if (!state.description) { btnSubmit.disabled = true; return; }
-    if (state.type === "DROP") { btnSubmit.disabled = false; return; }
+    if (state.type === "DROP") { 
+      btnSubmit.disabled = false;      
+      btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Confirmar Solicitud';
+    return; }
+    btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Confirmar y Agendar';
     // Appointment / Both → necesita slot
     btnSubmit.disabled = !(state.day && state.slot_id);
     btnSubmit.hidden = btnSubmit.disabled;
+
   }
 
   // ------------- Animaciones helpers -------------

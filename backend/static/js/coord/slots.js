@@ -1,6 +1,17 @@
 // static/js/coord_home.js
 // Página: /coord/home  → Configurar horario y generar slots
-
+window.addEventListener("DOMContentLoaded", () => {
+  const daySelect = document.getElementById("cfgDay");
+  const hashDay = window.location.hash.replace("#", "");
+  if (hashDay) {
+    for (const opt of daySelect.options) {
+      if (opt.value === hashDay) {
+        daySelect.value = hashDay;
+        break;
+      }
+    }
+  }
+});
 (() => {
   const $ = (sel) => document.querySelector(sel);
   const cfgForm = $("#dayConfigForm");

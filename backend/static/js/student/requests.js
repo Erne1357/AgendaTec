@@ -79,7 +79,6 @@
 
       const activeHtml = renderActive(data.active);
       const historyHtml = renderHistory(data.history || []);
-      console.log("Data  : " + JSON.stringify(data));
       panel.innerHTML = `
         <div class="d-flex flex-column gap-3">
           ${activeHtml}

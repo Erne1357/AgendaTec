@@ -1,7 +1,7 @@
 # routes/api/coord.py
 from datetime import datetime, date, timedelta
 from flask import Blueprint, request, jsonify, g,current_app
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func
 from sqlalchemy.exc import IntegrityError
 from utils.decorators import api_auth_required, api_role_required
 from models import db
@@ -48,6 +48,57 @@ def _coord_program_ids(coord_id: int):
             .filter(ProgramCoordinator.coordinator_id == coord_id).all())
     return {r[0] for r in rows}
 
+@api_coord_bp.get("/coord/dashboard")
+@api_auth_required
+@api_role_required(["coordinator","admin"])
+def coord_dashboard_summary():
+    coord_id = _current_coordinator_id()
+    if not coord_id:
+        return jsonify({"error":"coordinator_not_found"}), 404
+
+    # Citas (appointments) del coordinador en días permitidos
+    ap_base = (db.session.query(Appointment.id)
+               .join(TimeSlot, TimeSlot.id == Appointment.slot_id)
+               .filter(Appointment.coordinator_id == coord_id,
+                       TimeSlot.day.in_(ALLOWED_DAYS)))
+    ap_total = ap_base.count()
+
+    ap_pending = (db.session.query(func.count(Request.id))
+                  .join(Appointment, Appointment.request_id == Request.id)
+                  .join(TimeSlot, TimeSlot.id == Appointment.slot_id)
+                  .filter(Appointment.coordinator_id == coord_id,
+                          TimeSlot.day.in_(ALLOWED_DAYS),
+                          Request.status == "PENDING")
+                  ).scalar() or 0
+
+    # Drops de los programas del coordinador
+    prog_ids = _coord_program_ids(coord_id)
+    drop_q = (db.session.query(Request.id)
+              .filter(Request.type == "DROP",
+                      Request.program_id.in_(prog_ids)))
+    drops_total = drop_q.count()
+    drops_pending = (db.session.query(func.count(Request.id))
+                     .filter(Request.type == "DROP",
+                             Request.program_id.in_(prog_ids),
+                             Request.status == "PENDING")
+                     ).scalar() or 0
+
+    # Recordatorios: días permitidos SIN ventanas configuradas
+    missing = []
+    for d in sorted(ALLOWED_DAYS):
+        has_win = (db.session.query(AvailabilityWindow.id)
+                   .filter(AvailabilityWindow.coordinator_id == coord_id,
+                           AvailabilityWindow.day == d)
+                   .first())
+        if not has_win:
+            missing.append(str(d))
+
+    return jsonify({
+        "days_allowed": [str(x) for x in sorted(ALLOWED_DAYS)],
+        "appointments": {"total": ap_total, "pending": ap_pending},
+        "drops": {"total": drops_total, "pending": drops_pending},
+        "missing_slots": missing
+    })
 # ----------------- DAY CONFIG -----------------
 @api_coord_bp.get("/coord/day-config")
 @api_auth_required

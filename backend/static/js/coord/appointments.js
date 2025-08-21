@@ -90,7 +90,6 @@ function getCoordId() {
       if (useTable) renderTable(data.slots || []);
       else renderList((data.items || []));
     } catch (e) {
-      console.log(e);
       showToast("Error al cargar citas.", "error");
     }
   });

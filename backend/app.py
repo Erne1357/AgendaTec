@@ -1,8 +1,9 @@
 import os, time 
-from flask import Flask, render_template, redirect, url_for, request,current_app,g
+from flask import Flask, render_template, redirect, url_for, request,current_app,g,jsonify
 from models import db
 from utils.jwt_tools import encode_jwt, decode_jwt
-from utils.decorators import login_required, role_required_page, api_auth_required, api_role_required   
+from werkzeug.exceptions import HTTPException
+
 import logging
 
 
@@ -15,11 +16,12 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.222334594"  
+    app.config["STATIC_VERSION"] = "1.0.222334613"  
 
 
     db.init_app(app)
     register_blueprints(app)
+    register_error_handlers(app)
 
     from sockets import init_socketio
     init_socketio(app)
@@ -165,3 +167,69 @@ def role_home(role: str) -> str:
         return { "student": "/student/home",
                  "coordinator": "/coord/home",
                  "social_service": "/social/home" }.get(role, "/")
+
+def register_error_handlers(app):
+    MESSAGES = {
+        400: "Solicitud inválida",
+        401: "No autenticado",
+        403: "Acceso prohibido",
+        404: "Recurso no encontrado",
+        405: "Método no permitido",
+        409: "Conflicto de recurso",
+        413: "Carga demasiado grande",
+        415: "Tipo de contenido no soportado",
+        429: "Demasiadas solicitudes",
+        500: "Error interno del servidor",
+        502: "Puerta de enlace inválida",
+        503: "Servicio no disponible",
+        504: "Tiempo de espera agotado",
+    }
+
+    BIG_PAGE_CODES = {404, 405, 500, 502, 503, 504}
+
+    def wants_json():
+        return request.path.startswith("/api/")
+
+    def render_error_page(status_code, message):
+        # Usa una plantilla única con tu animación; recibe code & message
+        return render_template("errors/error_page.html",
+                               code=status_code,
+                               message=message), status_code
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception(e: HTTPException):
+        code = e.code or 500
+        msg = MESSAGES.get(code, e.name or "Error")
+        # JSON para API
+        if wants_json():
+            payload = {"error": getattr(e, "name", "error"), "status": code}
+            # Si hay descripción útil, inclúyela
+            if getattr(e, "description", None):
+                payload["detail"] = e.description
+            return jsonify(payload), code
+
+        # Páginas: 401 → login; grandes → plantilla; resto → plantilla genérica también
+        if code == 401:
+            # puedes agregar ?next=<ruta_actual>
+            return redirect(url_for("pages_auth.login_page"))
+        page_code = code if code in MESSAGES else 500
+        return render_error_page(page_code, msg)
+
+    @app.errorhandler(Exception)
+    def handle_unexpected(e: Exception):
+        app.logger.exception("Unhandled exception")
+        if wants_json():
+            return jsonify({"error": "internal_error", "status": 500}), 500
+        return render_error_page(500, MESSAGES[500])
+
+    # Opcional: handlers explícitos (si quieres sobreescribir mensajes)
+    for code in [400,401,403,404,405,409,413,415,429,500,502,503,504]:
+        def _factory(c):
+            def _h(_e):
+                if wants_json():
+                    return jsonify({"error": _e.name if isinstance(_e, HTTPException) else "error", "status": c}), c
+                if c == 401:
+                    return redirect(url_for("pages_auth.login_page"))
+                return render_error_page(c, MESSAGES.get(c, "Error"))
+            return _h
+        app.register_error_handler(code, _factory(code))
