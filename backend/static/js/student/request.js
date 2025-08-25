@@ -71,13 +71,13 @@
         resolve(socket);
         return;
       }
-      
+
       let waited = 0;
       const interval = 100;
       const check = setInterval(() => {
         const socket = getSocket();
         waited += interval;
-        
+
         if (socket && socket.connected) {
           clearInterval(check);
           resolve(socket);
@@ -93,17 +93,17 @@
   const joinDay = async (day) => {
     try {
       await waitForSocket();
-      
+
       // Salir del día anterior si existe
       if (state.currentRoom && state.currentRoom !== day) {
         emit("leave_day", { day: state.currentRoom });
       }
-      
+
       // Unirse al nuevo día
       emit("join_day", { day });
       state.currentRoom = day;
       console.log(`[WS] Solicitando join a day: ${day}`);
-      
+
     } catch (error) {
       console.error("[WS] Error al hacer join:", error);
       showToast("Error de conexión con el servidor", "warn");
@@ -120,7 +120,7 @@
     if (countdownInt) clearInterval(countdownInt);
     countdownLeft = ttl || 0;
     const holdTimerEl = holdBar?.querySelector(".slot-hold-timer");
-    
+
     const tick = () => {
       if (holdTimerEl) {
         holdTimerEl.textContent = countdownLeft > 0
@@ -152,7 +152,7 @@
   // Registrar eventos de socket una sola vez
   const registerSocketEvents = () => {
     if (socketEventsRegistered) return;
-    
+
     const socket = getSocket();
     if (!socket) return;
 
@@ -215,6 +215,12 @@
       }
     });
 
+    socket.on("slots_window_changed", (p) => {
+      if (p?.day === state.day) {
+        // vuelve a pedir los slots del día
+        loadSlots();
+      }
+    });
     // Slot reservado definitivamente
     socket.on("slot_booked", ({ slot_id, day }) => {
       console.log("[WS] slot_booked:", { slot_id, day });
@@ -371,13 +377,13 @@
       const day = btn.getAttribute("data-day");
       if (!ALLOWED_DAYS.includes(day)) return;
       state.day = day;
-      
+
       // Hacer join al día seleccionado
       await joinDay(day);
-      
+
       // Registrar eventos de socket si no están registrados
       registerSocketEvents();
-      
+
       // Cargar slots después del join
       setTimeout(() => loadSlots(), 500);
     });
@@ -389,7 +395,7 @@
       emit("leave_day", { day: state.currentRoom });
       state.currentRoom = null;
     }
-    
+
     releaseLocal();
     state.day = null;
     state.slot_id = null;
@@ -409,7 +415,7 @@
       renderSlots(data.items || []);
       // Animación al mostrar grid
       slotsWrap.hidden = false;
-    } catch (error){
+    } catch (error) {
       console.error(error);
       showToast("No se pudieron cargar los horarios.", "error");
     }
@@ -441,13 +447,13 @@
         <div class="slot-hold-timer me-auto"></div>
         <button class="btn btn-sm btn-outline-secondary" id="btnHoldCancel">Cancelar selección</button>      `;
       slotGrid.after(holdBar);
-      
+
       // Event listeners para la barra
       holdBar.querySelector("#btnHoldCancel").onclick = () => {
         if (!heldByMe) return;
         emit("release_hold", { slot_id: heldByMe });
       };
-      
+
     }
 
     // 1) Agrupar por hora => { "09": [slots...], "10": [slots...] }
@@ -586,10 +592,11 @@
     if (!state.type) { btnSubmit.disabled = true; return; }
     if (!state.program_id) { btnSubmit.disabled = true; return; }
     if (!state.description) { btnSubmit.disabled = true; return; }
-    if (state.type === "DROP") { 
-      btnSubmit.disabled = false;      
+    if (state.type === "DROP") {
+      btnSubmit.disabled = false;
       btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Confirmar Solicitud';
-    return; }
+      return;
+    }
     btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Confirmar y Agendar';
     // Appointment / Both → necesita slot
     btnSubmit.disabled = !(state.day && state.slot_id);

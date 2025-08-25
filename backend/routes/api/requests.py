@@ -253,7 +253,7 @@ def cancel_request(req_id: int):
         if ap:
             slot = db.session.query(TimeSlot).get(ap.slot_id)
             if slot and slot.is_booked:
-                slot_day = slot.day
+                slot_day = str(slot.day)
                 slot.is_booked = False
             ap.status = "CANCELED"
 

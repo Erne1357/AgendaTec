@@ -3,6 +3,7 @@ from flask import Flask, render_template, redirect, url_for, request,current_app
 from models import db
 from utils.jwt_tools import encode_jwt, decode_jwt
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import logging
 
@@ -16,12 +17,14 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.222334613"  
+    app.config["STATIC_VERSION"] = "1.0.22233469"  
 
 
     db.init_app(app)
     register_blueprints(app)
     register_error_handlers(app)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
 
     from sockets import init_socketio
     init_socketio(app)
