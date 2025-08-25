@@ -8,7 +8,7 @@
   const coordsUrl = cfg.coordsUrl || "/api/v1/admin/users/coordinators";
 
   let page = 0;
-  const pageSize = 20;
+  const pageSize = 10;
 
   const statusTone = (s) =>
     ({
