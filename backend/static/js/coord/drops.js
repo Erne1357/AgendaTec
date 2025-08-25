@@ -3,7 +3,36 @@
 
 (() => {
   const $ = (sel) => document.querySelector(sel);
+  function getCoordId() {
+    try { return Number(document.body?.dataset?.coordId || 0); } catch { return 0; }
+  }
+  (function wireRealtimeDrops() {
+    const sock = () => window.__reqSocket;
+    const shouldRefreshForStatus = () => {
+      // si el filtro actual incluye PENDING, refrescamos en creación;
+      // y para cambios de estado refrescamos siempre (simple).
+      return true;
+    };
+    const tryBind = () => {
+      const s = sock();
+      if (!s) return setTimeout(tryBind, 500);
+      s.off?.("drop_created");
+      s.off?.("request_status_changed");
 
+      s.on("drop_created", (p) => {
+        console.log("[WS req] drop_created", p);
+        if (shouldRefreshForStatus()) {
+          document.querySelector("#btnLoadDrops")?.click();
+        }
+      });
+      s.on("request_status_changed", (p) => {
+        if (p?.type !== "DROP") return;
+        console.log("[WS req] request_status_changed", p);
+        document.querySelector("#btnLoadDrops")?.click();
+      });
+    };
+    tryBind();
+  })();
   const mapReqStatusEs = (s) => ({
     "PENDING": "Pendiente",
     "RESOLVED_SUCCESS": "Resuelta",
@@ -66,7 +95,7 @@
       const statusEs = mapReqStatusEs(it.status);
       const tone = toneFor(it.status);
       const desc = (it.description || "Sin descripción").trim();
-      const alumno = it.student ? `${it.student.full_name || "—"}<br><span class="text-muted small">#${it.student.control_number || "—"}</span>` : "—";
+      const alumno = it.student ? `${it.student.full_name || "—"}<br><span class="text-muted small">${it.student.control_number || it.student.username || "—"}</span>` : "—";
 
       html += `<tr>
         <td>#${it.id}</td>
@@ -123,6 +152,8 @@
           <button class="btn btn-outline-warning"  data-drop="${it.id}" data-st="RESOLVED_NOT_COMPLETED">No resuelta</button>
           <button class="btn btn-outline-danger"   data-drop="${it.id}" data-st="CANCELED">Cancelar</button>
         `;
+        const cEl = document.getElementById("dropCoordComment");
+        if (cEl) cEl.value = it.coordinator_comment || it.comment || "";
       }
 
       const modal = new bootstrap.Modal(document.getElementById("dropDetailModal"));
@@ -138,6 +169,8 @@
     if (!act) return;
     const id = act.getAttribute("data-drop");
     const st = act.getAttribute("data-st");
+    const coordComment = (document.getElementById("dropCoordComment")?.value || "").trim();
+
     const label = {
       "RESOLVED_SUCCESS": "Marcar resuelta",
       "RESOLVED_NOT_COMPLETED": "Marcar no resuelta",
@@ -151,20 +184,28 @@
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ status: st })
+        body: JSON.stringify(
+          coordComment ? { status: st, coordinator_comment: coordComment } : { status: st }
+        )
       });
       if (!r.ok) throw new Error();
       showToast("Estado de solicitud actualizado.", "success");
       $("#btnLoadDrops").click(); // refrescar lista
       // cerrar modal si está abierto
-      try { bootstrap.Modal.getInstance(document.getElementById("dropDetailModal"))?.hide(); } catch {}
+      try { bootstrap.Modal.getInstance(document.getElementById("dropDetailModal"))?.hide(); } catch { }
     } catch {
       showToast("No se pudo actualizar el estado.", "error");
     }
   });
 
   // Carga inicial
-  try { $("#btnLoadDrops").click(); } catch {}
+  try {
+    $("#btnLoadDrops").click();
+    const coordId = getCoordId();
+    if (coordId > 0) {
+      window.__reqJoinDrops?.({ coord_id: coordId });
+    }
+  } catch { }
 
   function escapeHtml(str) {
     return (str || "")

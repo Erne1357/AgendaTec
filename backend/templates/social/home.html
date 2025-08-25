@@ -5,7 +5,7 @@
   <div class="card-body">
     <h5 class="card-title">Citas del día</h5>
     <div class="row g-2 mb-2">
-      <div class="col-6 col-sm-3">
+      <div class="col-12 col-sm-3">
         <label class="form-label">Día</label>
         <select class="form-select" id="ssDay">
           <option value="2025-08-25">25 Ago</option>
@@ -13,15 +13,27 @@
           <option value="2025-08-27">27 Ago</option>
         </select>
       </div>
-      <div class="col-12 col-sm-3 d-grid">
+
+      <div class="col-12 col-sm-5">
+        <label class="form-label">Carrera</label>
+        <select class="form-select" id="ssProgram">
+          <option value="">Todas</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-sm-2 d-grid">
         <label class="form-label d-none d-sm-block">&nbsp;</label>
         <button class="btn btn-outline-primary" id="btnLoadSS">Cargar</button>
       </div>
     </div>
+
     <div id="ssList" class="table-responsive"></div>
   </div>
 </div>
 {% endblock %}
+
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/social_home.js') }}?v={{ static_version }}"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='js/sockets/requests_social_client.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='js/social/home.js') }}?v={{ static_version }}"></script>
 {% endblock %}

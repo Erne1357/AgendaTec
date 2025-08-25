@@ -1,7 +1,7 @@
 # routes/api/coord.py
 from datetime import datetime, date, timedelta
-from flask import Blueprint, request, jsonify, g
-from sqlalchemy import and_, or_
+from flask import Blueprint, request, jsonify, g,current_app
+from sqlalchemy import and_, or_, func
 from sqlalchemy.exc import IntegrityError
 from utils.decorators import api_auth_required, api_role_required
 from models import db
@@ -14,6 +14,10 @@ from models.time_slot import TimeSlot
 from models.request import Request
 from models.appointment import Appointment
 from utils.security import verify_nip, hash_nip
+from sockets import socketio
+from sockets.requests import broadcast_request_status_changed
+from utils.notify import create_notification
+from sockets.notifications import push_notification
 
 api_coord_bp = Blueprint("api_coord", __name__)
 
@@ -43,7 +47,110 @@ def _coord_program_ids(coord_id: int):
     rows = (db.session.query(ProgramCoordinator.program_id)
             .filter(ProgramCoordinator.coordinator_id == coord_id).all())
     return {r[0] for r in rows}
+def _split_or_delete_windows(coord_id, d, time_ge, time_lt):
+    """
+    Para cada AvailabilityWindow que se solape con [time_ge, time_lt):
+    - Elimina la ventana original
+    - Recrea hasta dos ventanas 'no solapadas':
+        [start_time, time_ge)  y  [time_lt, end_time)
+      conservando slot_minutes
+    """
+    overlapping = (
+        db.session.query(AvailabilityWindow)
+        .filter(
+            AvailabilityWindow.coordinator_id == coord_id,
+            AvailabilityWindow.day == d,
+            ~(
+                (AvailabilityWindow.end_time   <= time_ge) |
+                (AvailabilityWindow.start_time >= time_lt)
+            )
+        ).all()
+    )
+    recreated = 0
+    deleted = 0
+    for w in overlapping:
+        left_start, left_end = w.start_time, min(w.end_time, time_ge)
+        right_start, right_end = max(w.start_time, time_lt), w.end_time
 
+        # Eliminar original
+        db.session.delete(w)
+        deleted += 1
+
+        # Recrear izquierda
+        if left_start < left_end:
+            db.session.add(AvailabilityWindow(
+                coordinator_id=coord_id,
+                day=d,
+                start_time=left_start,
+                end_time=left_end,
+                slot_minutes=w.slot_minutes
+            ))
+            recreated += 1
+
+        # Recrear derecha
+        if right_start < right_end:
+            db.session.add(AvailabilityWindow(
+                coordinator_id=coord_id,
+                day=d,
+                start_time=right_start,
+                end_time=right_end,
+                slot_minutes=w.slot_minutes
+            ))
+            recreated += 1
+
+    return {"windows_deleted": deleted, "windows_created": recreated}
+
+@api_coord_bp.get("/coord/dashboard")
+@api_auth_required
+@api_role_required(["coordinator","admin"])
+def coord_dashboard_summary():
+    coord_id = _current_coordinator_id()
+    if not coord_id:
+        return jsonify({"error":"coordinator_not_found"}), 404
+
+    # Citas (appointments) del coordinador en días permitidos
+    ap_base = (db.session.query(Appointment.id)
+               .join(TimeSlot, TimeSlot.id == Appointment.slot_id)
+               .filter(Appointment.coordinator_id == coord_id,
+                       TimeSlot.day.in_(ALLOWED_DAYS)))
+    ap_total = ap_base.count()
+
+    ap_pending = (db.session.query(func.count(Request.id))
+                  .join(Appointment, Appointment.request_id == Request.id)
+                  .join(TimeSlot, TimeSlot.id == Appointment.slot_id)
+                  .filter(Appointment.coordinator_id == coord_id,
+                          TimeSlot.day.in_(ALLOWED_DAYS),
+                          Request.status == "PENDING")
+                  ).scalar() or 0
+
+    # Drops de los programas del coordinador
+    prog_ids = _coord_program_ids(coord_id)
+    drop_q = (db.session.query(Request.id)
+              .filter(Request.type == "DROP",
+                      Request.program_id.in_(prog_ids)))
+    drops_total = drop_q.count()
+    drops_pending = (db.session.query(func.count(Request.id))
+                     .filter(Request.type == "DROP",
+                             Request.program_id.in_(prog_ids),
+                             Request.status == "PENDING")
+                     ).scalar() or 0
+
+    # Recordatorios: días permitidos SIN ventanas configuradas
+    missing = []
+    for d in sorted(ALLOWED_DAYS):
+        has_win = (db.session.query(AvailabilityWindow.id)
+                   .filter(AvailabilityWindow.coordinator_id == coord_id,
+                           AvailabilityWindow.day == d)
+                   .first())
+        if not has_win:
+            missing.append(str(d))
+
+    return jsonify({
+        "days_allowed": [str(x) for x in sorted(ALLOWED_DAYS)],
+        "appointments": {"total": ap_total, "pending": ap_pending},
+        "drops": {"total": drops_total, "pending": drops_pending},
+        "missing_slots": missing
+    })
 # ----------------- DAY CONFIG -----------------
 @api_coord_bp.get("/coord/day-config")
 @api_auth_required
@@ -199,15 +306,103 @@ def set_day_config():
         ))
         created += 1
         cur_dt += step
-
     db.session.commit()
+
+    try:
+        socketio.emit("slots_window_changed", {"day": str(d)},
+                      to=f"day:{str(d)}", namespace="/slots")
+    except Exception:
+        current_app.logger.exception("Failed to emit slots_window_changed")
+
     return jsonify({
         "ok": True,
         "windows_deleted": wins_deleted,
         "slots_deleted": slots_deleted,
         "slots_created": created
     })
+@api_coord_bp.delete("/coord/day-config")
+@api_auth_required
+@api_role_required(["coordinator","admin"])
+def delete_day_range():
+    """
+    Borra el rango [start, end) de un día:
+    - Si hay slots reservados en el rango → 409 (no borra nada)
+    - Borra slots NO reservados dentro del rango
+    - Recorta ventanas de disponibilidad solapadas con el rango
+    - Emite sockets para que los clientes recarguen
+    """
+    coord_id = _current_coordinator_id()
+    if not coord_id:
+        return jsonify({"error":"coordinator_not_found"}), 404
 
+    data = request.get_json(silent=True) or {}
+    day_s = (data.get("day") or "").strip()
+    start_s = (data.get("start") or "").strip()
+    end_s   = (data.get("end") or "").strip()
+
+    # Validaciones de fecha/hora
+    try:
+        d = datetime.strptime(day_s, "%Y-%m-%d").date()
+    except Exception:
+        return jsonify({"error":"invalid_day_format"}), 400
+    if d not in ALLOWED_DAYS:
+        return jsonify({"error":"day_not_allowed"}), 400
+    today = date.today()
+    if today >= d:
+        return jsonify({"error":"cannot_modify_today_or_past"}), 400
+
+    try:
+        sh, sm = map(int, start_s.split(":"))
+        eh, em = map(int, end_s.split(":"))
+        start_t = datetime.strptime(f"{sh:02d}:{sm:02d}", "%H:%M").time()
+        end_t   = datetime.strptime(f"{eh:02d}:{em:02d}", "%H:%M").time()
+    except Exception:
+        return jsonify({"error":"invalid_time_format"}), 400
+    if end_t <= start_t:
+        return jsonify({"error":"invalid_time_range"}), 400
+
+    # 1) ¿Hay reservados en el rango?
+    overlap_booked_cnt = (
+        db.session.query(TimeSlot.id)
+        .filter(TimeSlot.coordinator_id == coord_id,
+                TimeSlot.day == d,
+                TimeSlot.start_time >= start_t,
+                TimeSlot.start_time <  end_t,
+                TimeSlot.is_booked == True)
+        .count()
+    )
+    if overlap_booked_cnt > 0:
+        return jsonify({"error":"overlap_booked_slots_exist", "booked_count": overlap_booked_cnt}), 409
+
+    # 2) Borrar slots NO reservados del rango
+    slots_deleted = (
+        db.session.query(TimeSlot)
+        .filter(TimeSlot.coordinator_id == coord_id,
+                TimeSlot.day == d,
+                TimeSlot.start_time >= start_t,
+                TimeSlot.start_time <  end_t,
+                TimeSlot.is_booked == False)
+        .delete(synchronize_session=False)
+    )
+
+    # 3) Recortar ventanas de disponibilidad solapadas
+    win_stats = _split_or_delete_windows(coord_id, d, start_t, end_t)
+
+    db.session.commit()
+
+    # 4) Broadcast para que alumnos/coord recarguen slots del día
+    try:
+        socketio.emit("slots_window_changed", {"day": str(d)},
+                      to=f"day:{str(d)}", namespace="/slots")
+    except Exception:
+        current_app.logger.exception("Failed to emit slots_window_changed")
+
+    return jsonify({
+        "ok": True,
+        "day": str(d),
+        "slots_deleted": slots_deleted,
+        **win_stats
+    })
 
 # ----------------- APPOINTMENTS LIST -----------------
 @api_coord_bp.get("/coord/appointments")
@@ -244,6 +439,8 @@ def coord_appointments():
 
     if req_status:
         base = base.filter(Request.status == req_status)
+    else: 
+        base = base.filter(Request.status != "CANCELED")
     if program_id:
         try:
             pid = int(program_id)
@@ -270,7 +467,8 @@ def coord_appointments():
             "request_id": req.id,
             "program": {"id": prog.id, "name": prog.name},
             "description": req.description,
-            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number},
+            "coordinator_comment" : req.coordinator_comment,
+            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number, "username" : stu.username},
             "slot": {"day": str(slot.day),
                      "start_time": slot.start_time.strftime("%H:%M"),
                      "end_time": slot.end_time.strftime("%H:%M")},
@@ -293,7 +491,7 @@ def coord_appointments():
             "request_id": req.id,
             "program": {"id": prog.id, "name": prog.name},
             "description": req.description,
-            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number},
+            "student": {"id": stu.id, "full_name": stu.full_name, "control_number": stu.control_number, "username" : stu.username},
             "request_status": req.status
         }
     for s in ts_q.all():
@@ -345,6 +543,15 @@ def update_appointment(ap_id: int):
 
     ap.status = new_status
     db.session.commit()
+    slot = db.session.query(TimeSlot).get(ap.slot_id)
+    payload = {
+        "type": "APPOINTMENT",
+        "request_id": ap.request_id,
+        "new_status": req.status,
+        "day": str(slot.day) if slot else None,
+        "program_id" : req.program.id
+    }
+    broadcast_request_status_changed(socketio, coord_id, payload)
     return jsonify({"ok": True})
 
 # ----------------- DROPS -----------------
@@ -352,13 +559,24 @@ def update_appointment(ap_id: int):
 @api_auth_required
 @api_role_required(["coordinator","admin"])
 def coord_drops():
-    coord_id = _current_coordinator_id()
-    if not coord_id:
-        return jsonify({"error":"coordinator_not_found"}), 404
+    # ¿es admin?
+    role = (g.current_user or {}).get("role")
+    is_admin = (role == "admin")
+
+    # si NO es admin, necesitamos el coordinador y sus programas
+    coord_id = None
+    prog_ids = None
+    if not is_admin:
+        coord_id = _current_coordinator_id()
+        if not coord_id:
+            return jsonify({"total": 0, "items": []})  # o 404 si prefieres
+        prog_ids = _coord_program_ids(coord_id)
+        if not prog_ids:
+            return jsonify({"total": 0, "items": []})
 
     status = (request.args.get("status") or "ALL").upper()
     program_id = request.args.get("program_id")
-    request_id = request.args.get("request_id")  # <-- NUEVO
+    request_id = request.args.get("request_id")
     page = int(request.args.get("page", 1))
     page_size = min(max(int(request.args.get("page_size", 20)), 1), 100)
 
@@ -366,6 +584,14 @@ def coord_drops():
          .join(User, User.id == Request.student_id)
          .filter(Request.type == "DROP"))
 
+    # 🔒 filtro de pertenencia por programa (solo coordinador; admin ve todo)
+    if not is_admin:
+        # Si quieres ser ultra-defensivo con lista vacía:
+        if not prog_ids:
+            return jsonify({"total": 0, "items": []})
+        q = q.filter(Request.program_id.in_(list(prog_ids)))
+
+    # Filtro por ID específico (sigue respetando pertenencia si no eres admin)
     if request_id:
         try:
             rid = int(request_id)
@@ -373,19 +599,21 @@ def coord_drops():
             return jsonify({"error":"invalid_request_id"}), 400
         q = q.filter(Request.id == rid)
 
+    # Filtro por estado
     if status != "ALL":
         q = q.filter(Request.status == status)
 
+    # Filtro por programa explícito (valida pertenencia si no eres admin)
     if program_id:
         try:
             pid = int(program_id)
         except:
             return jsonify({"error":"invalid_program_id"}), 400
-        if pid not in _coord_program_ids(coord_id):
+        if not is_admin and pid not in prog_ids:
             return jsonify({"error":"forbidden_program"}), 403
         q = q.filter(Request.program_id == pid)
 
-    # Orden: FIFO para PENDING; si "ALL", primero pendientes en FIFO, luego el resto
+    # Orden
     from sqlalchemy import case
     if status == "PENDING":
         q = q.order_by(Request.created_at.asc(), Request.id.asc())
@@ -406,7 +634,12 @@ def coord_drops():
         "status": r.status,
         "description": r.description,
         "created_at": r.created_at.isoformat(),
-        "student": {"id": u.id, "full_name": u.full_name, "control_number": u.control_number}
+        "comment": r.coordinator_comment,
+        "student": {
+            "id": u.id,
+            "full_name": u.full_name,
+            "control_number": u.control_number
+        }
     } for r, u in rows]
 
     return jsonify({"total": total, "items": items})
@@ -429,6 +662,9 @@ def update_request_status(req_id: int):
     if new_status not in allowed:
         return jsonify({"error":"invalid_status"}), 400
 
+    if "coordinator_comment" in data:
+        comment = (data.get("coordinator_comment")).strip()
+        r.coordinator_comment = comment or None
     # Solo permitir que el coordinador cambie requests asociados a sus programas (si aplica)
     # Nota: si necesitas forzar scope, valida con ProgramCoordinator.
     # if r.program_id not in _coord_program_ids(coord_id):
@@ -436,7 +672,6 @@ def update_request_status(req_id: int):
 
     # Actualizar estado de la solicitud
     r.status = new_status
-
     # Si es APPOINTMENT, reflejar en Appointment.status y liberar slot cuando aplique
     if r.type == "APPOINTMENT":
         ap = db.session.query(Appointment).filter(Appointment.request_id == r.id,
@@ -453,6 +688,50 @@ def update_request_status(req_id: int):
                     slot.is_booked = False
 
     db.session.commit()
+    day = None
+    if r.type == "APPOINTMENT":
+        ap = db.session.query(Appointment).filter(Appointment.request_id == r.id,
+                                                Appointment.coordinator_id == coord_id).first()
+        if ap:
+            s = db.session.query(TimeSlot).get(ap.slot_id)
+            day = str(s.day) if s else None
+
+    payload = {
+        "type": r.type,
+        "request_id": r.id,
+        "new_status": r.status,
+        "day": day,
+        "program_id" : r.program.id
+    }
+    broadcast_request_status_changed(socketio, coord_id, payload)
+    try:
+        stu_id = db.session.query(User.id).filter(User.id == Request.student_id, Request.id == r.id).scalar()
+        if stu_id:
+            title_map = {
+                "RESOLVED_SUCCESS": "Tu solicitud fue atendida y resuelta",
+                "RESOLVED_NOT_COMPLETED": "Tu solicitud fue atendida pero no se resolvió",
+                "NO_SHOW": "Marcado como no asistió",
+                "ATTENDED_OTHER_SLOT": "Asististe en otro horario",
+                "CANCELED": "Tu solicitud fue cancelada"
+            }
+            type_map = {
+                "APPOINTMENT" : "CITA",
+                "DROP" : "BAJA",
+            }
+            n = create_notification(
+                user_id=stu_id,
+                type="REQUEST_STATUS_CHANGED",
+                title=title_map.get(new_status, "Estado de solicitud actualizado"),
+                body="Solicitud : " +  type_map.get(r.type, "") + 
+                (("\nComentarios : " +  r.coordinator_comment ) if r.coordinator_comment else " "),
+                data={"request_id": r.id, "status": new_status},
+                source_request_id=r.id,
+                program_id=r.program_id
+            )
+            db.session.commit()
+            push_notification(socketio, stu_id, n.to_dict())
+    except Exception:
+        current_app.logger.exception("Failed to create/push status-change notification")
     return jsonify({"ok": True})
 
 @api_coord_bp.get("/coord/password-state")

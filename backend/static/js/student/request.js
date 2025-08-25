@@ -1,5 +1,3 @@
-// static/js/student_request.js
-
 (() => {
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -14,7 +12,17 @@
     slot_id: null,
     description: null,
     selectedHour: null,
+    currentRoom: null,     // Para trackear la room actual
   };
+
+  // Variables globales para sockets
+  let btnById = new Map();
+  let heldByMe = null;
+  let pendingHold = null;
+  let countdownInt = null;
+  let countdownLeft = 0;
+  let holdBar = null;
+  let socketEventsRegistered = false;
 
   // Elements
   const stepType = $("#stepType");
@@ -44,8 +52,245 @@
   const btnSubmit = $("#btnSubmit");
   const actionBar = $("#actionBar");
 
+  // Helpers para sockets
+  const getSocket = () => window.__slotsSocket;
+  const emit = (event, payload) => {
+    const socket = getSocket();
+    if (socket && socket.connected) {
+      socket.emit(event, payload);
+    } else {
+      console.warn(`[WS] No se puede emitir ${event}, socket no disponible`);
+    }
+  };
+
+  // Función para esperar a que el socket esté conectado
+  const waitForSocket = (maxWait = 5000) => {
+    return new Promise((resolve, reject) => {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        resolve(socket);
+        return;
+      }
+
+      let waited = 0;
+      const interval = 100;
+      const check = setInterval(() => {
+        const socket = getSocket();
+        waited += interval;
+
+        if (socket && socket.connected) {
+          clearInterval(check);
+          resolve(socket);
+        } else if (waited >= maxWait) {
+          clearInterval(check);
+          reject(new Error('Socket no disponible después del tiempo límite'));
+        }
+      }, interval);
+    });
+  };
+
+  // Función para hacer join a un día de forma segura
+  const joinDay = async (day) => {
+    try {
+      await waitForSocket();
+
+      // Salir del día anterior si existe
+      if (state.currentRoom && state.currentRoom !== day) {
+        emit("leave_day", { day: state.currentRoom });
+      }
+
+      // Unirse al nuevo día
+      emit("join_day", { day });
+      state.currentRoom = day;
+      console.log(`[WS] Solicitando join a day: ${day}`);
+
+    } catch (error) {
+      console.error("[WS] Error al hacer join:", error);
+      showToast("Error de conexión con el servidor", "warn");
+    }
+  };
+
+  // Helpers para UI de slots
+  const getSlotButton = (slotId) => {
+    const id = Number(slotId);
+    return btnById.get(id) || document.querySelector(`.slot-btn[data-slot="${id}"]`) || null;
+  };
+
+  const startCountdown = (ttl) => {
+    if (countdownInt) clearInterval(countdownInt);
+    countdownLeft = ttl || 0;
+    const holdTimerEl = holdBar?.querySelector(".slot-hold-timer");
+
+    const tick = () => {
+      if (holdTimerEl) {
+        holdTimerEl.textContent = countdownLeft > 0
+          ? `Reserva temporal: ${countdownLeft}s`
+          : `Reserva expirada`;
+      }
+      if (countdownLeft <= 0) {
+        clearInterval(countdownInt);
+        releaseLocal();
+      }
+      countdownLeft -= 1;
+    };
+    tick();
+    countdownInt = setInterval(tick, 1000);
+  };
+
+  const releaseLocal = () => {
+    if (heldByMe && btnById.has(heldByMe)) {
+      const b = btnById.get(heldByMe);
+      b.classList.remove("active", "held", "held-self");
+      b.disabled = false;
+    }
+    heldByMe = null;
+    state.slot_id = null;
+    if (holdBar) holdBar.hidden = true;
+    updateSubmitDisabled();
+  };
+
+  // Registrar eventos de socket una sola vez
+  const registerSocketEvents = () => {
+    if (socketEventsRegistered) return;
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    // Limpiar handlers existentes
+    socket.off("slots_snapshot");
+    socket.off("slot_held");
+    socket.off("slot_released");
+    socket.off("slot_booked");
+    socket.off("hold_slot_ack");
+    socket.off("release_hold_ack");
+
+    // Snapshot inicial
+    socket.on("slots_snapshot", (snap) => {
+      if (!snap || snap.day !== state.day) return;
+
+      // Marca booked
+      (snap.booked || []).forEach((id) => {
+        const btn = getSlotButton(id);
+        if (btn) {
+          btn.classList.add("booked");
+          btn.disabled = true;
+        }
+      });
+
+      // Marca held
+      (snap.held || []).forEach(({ slot_id }) => {
+        const btn = getSlotButton(slot_id);
+        if (btn) {
+          btn.classList.add("held");
+          btn.classList.remove("held-self");
+          btn.disabled = true;
+        }
+      });
+    });
+
+    // Alguien puso hold en un slot
+    socket.on("slot_held", ({ slot_id, day, ttl }) => {
+      console.log("[WS] slot_held:", { slot_id, day, ttl });
+      if (day !== state.day) return;
+      const btn = getSlotButton(slot_id);
+      if (!btn) return;
+      if (!btn.classList.contains("held-self")) {
+        btn.classList.add("held");
+        btn.classList.remove("held-self");
+      }
+      btn.disabled = true;
+    });
+
+    // Se liberó un hold
+    socket.on("slot_released", ({ slot_id, day }) => {
+      console.log("[WS] slot_released:", { slot_id, day });
+      if (day !== state.day) return;
+      const btn = getSlotButton(slot_id);
+      if (!btn) return;
+      btn.classList.remove("held", "held-self", "booked");
+      btn.disabled = false;
+      btn.hidden = false;
+      if (heldByMe === Number(slot_id)) {
+        releaseLocal();
+      }
+    });
+
+    socket.on("slots_window_changed", (p) => {
+      if (p?.day === state.day) {
+        // vuelve a pedir los slots del día
+        loadSlots();
+      }
+    });
+    // Slot reservado definitivamente
+    socket.on("slot_booked", ({ slot_id, day }) => {
+      console.log("[WS] slot_booked:", { slot_id, day });
+      if (day !== state.day) return;
+      const btn = getSlotButton(slot_id);
+      if (btn) {
+        btn.classList.add("booked");
+        btn.disabled = true;
+        btn.hidden = true;
+      }
+      if (heldByMe === Number(slot_id)) {
+        releaseLocal();
+        showToast("El horario fue reservado con éxito.", "success");
+      }
+    });
+
+    // Respuesta a MI intento de hold
+    socket.on("hold_slot_ack", (resp) => {
+      console.log("[WS] hold_slot_ack:", resp);
+      if (!resp) return;
+      if (!resp.ok) {
+        if (resp.error === "already_held") {
+          showToast("Este horario está temporalmente ocupado.", "warn");
+        } else if (resp.error === "slot_not_found") {
+          showToast("El horario ya no está disponible.", "warn");
+        } else {
+          showToast("No se pudo seleccionar el horario.", "error");
+        }
+        return;
+      }
+
+      const slotId = Number(resp.slot_id);
+      const ttl = Number(resp.ttl || 0);
+
+      // Si tenía otro hold, lo suelto visualmente
+      if (heldByMe && heldByMe !== slotId && btnById.has(heldByMe)) {
+        const old = btnById.get(heldByMe);
+        old.classList.remove("active", "held", "held-self");
+        old.disabled = false;
+      }
+
+      const btn = btnById.get(slotId);
+      if (btn) {
+        btn.classList.add("active", "held", "held-self");
+        btn.disabled = true;
+      }
+
+      heldByMe = slotId;
+      state.slot_id = slotId;
+      if (holdBar) holdBar.hidden = false;
+      startCountdown(ttl);
+      updateSubmitDisabled();
+    });
+
+    // Respuesta a release
+    socket.on("release_hold_ack", (resp) => {
+      console.log("[WS] release_hold_ack:", resp);
+      if (resp?.ok && pendingHold) {
+        const next = pendingHold;
+        pendingHold = null;
+        emit("hold_slot", { slot_id: next });
+      }
+    });
+
+    socketEventsRegistered = true;
+  };
+
   //Empezar con el botón submit sin mostrarse
   btnSubmit.hidden = true;
+
   // ------------- Paso 1: elegir tipo -------------
   $("[data-type='DROP']").addEventListener("click", () => chooseType("DROP"));
   $("[data-type='APPOINTMENT']").addEventListener("click", () => chooseType("APPOINTMENT"));
@@ -65,7 +310,6 @@
     // Mostrar campos según tipo
     altaFields.hidden = (t === "DROP");
     bajaFields.hidden = (t === "APPOINTMENT");
-
 
     // Botonera de acción visible ya (en DROP, se permitirá enviar sin slot)
     actionBar.hidden = false;
@@ -126,21 +370,33 @@
       stepForms.hidden = true;
       stepProgram.hidden = true;
     }
-
   });
-
 
   $$(".day-btn").forEach(btn => {
     btn.addEventListener("click", async () => {
       const day = btn.getAttribute("data-day");
       if (!ALLOWED_DAYS.includes(day)) return;
       state.day = day;
-      await loadSlots();
+
+      // Hacer join al día seleccionado
+      await joinDay(day);
+
+      // Registrar eventos de socket si no están registrados
+      registerSocketEvents();
+
+      // Cargar slots después del join
+      setTimeout(() => loadSlots(), 500);
     });
   });
 
   $("#btnChangeDay").addEventListener("click", () => {
-    // “Elegir otro día”: resetea slots y vuelve a mostrar botones de día
+    // "Elegir otro día": resetea slots y vuelve a mostrar botones de día
+    if (state.currentRoom) {
+      emit("leave_day", { day: state.currentRoom });
+      state.currentRoom = null;
+    }
+
+    releaseLocal();
     state.day = null;
     state.slot_id = null;
     slotsWrap.hidden = true;
@@ -159,24 +415,45 @@
       renderSlots(data.items || []);
       // Animación al mostrar grid
       slotsWrap.hidden = false;
-    } catch {
+    } catch (error) {
+      console.error(error);
       showToast("No se pudieron cargar los horarios.", "error");
     }
   }
 
   function renderSlots(items) {
+    // --- Estado base ---
     state.slot_id = null;
     state.selectedHour = null;
     updateSubmitDisabled();
 
-    const slotGrid = $("#slotGrid");
     const hourTabs = $("#hourTabs");
     slotGrid.innerHTML = "";
     hourTabs.innerHTML = "";
+    btnById.clear();
 
     if (!items.length) {
       slotGrid.innerHTML = `<div class="text-muted">No hay horarios disponibles para este día.</div>`;
       return;
+    }
+
+    // Crear barra de control si no existe
+    if (!holdBar) {
+      holdBar = document.createElement("div");
+      holdBar.id = "__slotHoldBar";
+      holdBar.className = "d-flex align-items-center slot-hold-controls mt-2";
+      holdBar.hidden = true;
+      holdBar.innerHTML = `
+        <div class="slot-hold-timer me-auto"></div>
+        <button class="btn btn-sm btn-outline-secondary" id="btnHoldCancel">Cancelar selección</button>      `;
+      slotGrid.after(holdBar);
+
+      // Event listeners para la barra
+      holdBar.querySelector("#btnHoldCancel").onclick = () => {
+        if (!heldByMe) return;
+        emit("release_hold", { slot_id: heldByMe });
+      };
+
     }
 
     // 1) Agrupar por hora => { "09": [slots...], "10": [slots...] }
@@ -227,26 +504,40 @@
     }
   }
 
+  // Render de una hora (se llama al cambiar de tab y al inicio)
+  function renderHourSlots(slots) {
+    slotGrid.innerHTML = "";
+    btnById.clear();
+
+    // Botones por slot en la hora seleccionada
+    slots.forEach((s) => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-outline-secondary slot-btn";
+      btn.textContent = `${s.start_time} - ${s.end_time}`;
+      btn.dataset.slot = s.slot_id;
+
+      btn.addEventListener("click", () => {
+        const newId = Number(btn.dataset.slot);
+        // Si tengo otro hold, lo libero primero
+        if (heldByMe && heldByMe !== newId) {
+          pendingHold = newId;
+          emit("release_hold", { slot_id: heldByMe });
+          return;
+        }
+        emit("hold_slot", { slot_id: newId });
+      });
+
+      slotGrid.appendChild(btn);
+      btnById.set(s.slot_id, btn);
+    });
+  }
+
   // ------------- Envío -------------
   btnSubmit.addEventListener("click", async () => {
     if (!state.type) return;
 
     // Validaciones mínimas
     if (!state.program_id) { showToast("Selecciona tu carrera.", "warn"); return; }
-
-    // Armar payloads informativos (nota: tus endpoints actuales para /requests
-    // solo usan type, program_id y slot_id; estos campos extra puedes guardarlos
-    // luego en una tabla de “request_details” si lo deseas).
-    const altaInfo = {
-      materia: altaNoSe.checked ? null : (altaMateria.value || null),
-      no_se: !!altaNoSe.checked,
-      horario: altaHorario.value || null
-    };
-    const bajaInfo = {
-      materia: bajaMateria.value || null,
-      horario: bajaHorario.value || null
-    };
-
 
     let body;
     if (state.type === "DROP") {
@@ -301,10 +592,16 @@
     if (!state.type) { btnSubmit.disabled = true; return; }
     if (!state.program_id) { btnSubmit.disabled = true; return; }
     if (!state.description) { btnSubmit.disabled = true; return; }
-    if (state.type === "DROP") { btnSubmit.disabled = false; return; }
+    if (state.type === "DROP") {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Confirmar Solicitud';
+      return;
+    }
+    btnSubmit.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Confirmar y Agendar';
     // Appointment / Both → necesita slot
     btnSubmit.disabled = !(state.day && state.slot_id);
     btnSubmit.hidden = btnSubmit.disabled;
+
   }
 
   // ------------- Animaciones helpers -------------
@@ -371,6 +668,8 @@
     }
     return "";
   }
+
+  // Event listeners para actualizar descripción
   bajaMateria.addEventListener("change", () => {
     state.description = getDescription();
     btnSubmit.hidden = !state.description || state.description === "";
@@ -382,37 +681,5 @@
     btnSubmit.hidden = !state.description || state.description === "";
     updateSubmitDisabled();
   });
-
-  function renderHourSlots(hourItems) {
-    const slotGrid = $("#slotGrid");
-    slotGrid.innerHTML = "";
-    state.slot_id = null;
-    updateSubmitDisabled();
-
-    hourItems
-      .sort((a, b) => (a.start_time > b.start_time ? 1 : -1))
-      .forEach((s) => {
-        const btn = document.createElement("button");
-        // Disponible → verde outline; seleccionado → verde sólido
-        btn.className = "btn btn-sm btn-outline-success slot-btn";
-        btn.textContent = `${s.start_time} - ${s.end_time}`;
-        btn.dataset.slot = s.slot_id;
-
-        btn.addEventListener("click", () => {
-          // marcar seleccionado
-          Array.from(document.querySelectorAll(".slot-btn")).forEach(b => {
-            b.classList.remove("active", "btn-success");
-            b.classList.add("btn-outline-success");
-          });
-          btn.classList.add("active", "btn-success");
-          btn.classList.remove("btn-outline-success");
-
-          state.slot_id = s.slot_id;
-          updateSubmitDisabled();
-        });
-
-        slotGrid.appendChild(btn);
-      });
-  }
 
 })();

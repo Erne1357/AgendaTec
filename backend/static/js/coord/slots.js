@@ -1,6 +1,17 @@
 // static/js/coord_home.js
 // Página: /coord/home  → Configurar horario y generar slots
-
+window.addEventListener("DOMContentLoaded", () => {
+  const daySelect = document.getElementById("cfgDay");
+  const hashDay = window.location.hash.replace("#", "");
+  if (hashDay) {
+    for (const opt of daySelect.options) {
+      if (opt.value === hashDay) {
+        daySelect.value = hashDay;
+        break;
+      }
+    }
+  }
+});
 (() => {
   const $ = (sel) => document.querySelector(sel);
   const cfgForm = $("#dayConfigForm");
@@ -46,8 +57,8 @@
       const data = await r.json();
       cfgRes.textContent =
         `Ventanas borradas: ${data.windows_deleted} | ` +
-        `Slots borrados: ${data.slots_deleted} | ` +
-        `Slots creados: ${data.slots_created}`;
+        `Horarios borrados: ${data.slots_deleted} | ` +
+        `Horarios creados: ${data.slots_created}`;
       showToast("Configuración guardada y slots generados.", "success");
     } catch (e) {
       showToast("No se pudo conectar.", "error");
