@@ -208,9 +208,12 @@ def set_day_config():
     if d not in ALLOWED_DAYS:
         return jsonify({"error":"day_not_allowed","allowed":[str(x) for x in sorted(ALLOWED_DAYS)]}), 400
 
-    today = date.today()
-    if today >= d:
-        return jsonify({"error":"cannot_modify_today_or_past"}), 400
+    now = datetime.now()
+    d = datetime.strptime(day_s, "%Y-%m-%d").date()
+    start_t = datetime.strptime(start_s, "%H:%M").time()
+    slot_datetime = datetime.combine(d, start_t)
+    if now > slot_datetime:
+        return jsonify({"error": "slot_time_passed"}), 400
 
     try:
         sh, sm = map(int, start_s.split(":"))
@@ -638,7 +641,8 @@ def coord_drops():
         "student": {
             "id": u.id,
             "full_name": u.full_name,
-            "control_number": u.control_number
+            "control_number": u.control_number,
+            "username": u.username
         }
     } for r, u in rows]
 

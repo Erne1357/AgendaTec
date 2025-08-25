@@ -45,6 +45,8 @@ window.addEventListener("DOMContentLoaded", () => {
           showToast("No puedes modificar el día actual o pasado.", "warn");
         } else if (err.error === "day_not_allowed") {
           showToast("El día no está permitido.", "warn");
+        } else if (err.error === "slot_time_passed") {
+          showToast("El horario inicial ya pasó");
         } else if (err.error === "invalid_time_range_or_slot_size") {
           showToast("Rango de horario inválido o tamaño de slot incompatible.", "warn");
         } else if (err.error === "overlap_booked_slots_exist") {

@@ -17,7 +17,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.222334691"  
+    app.config["STATIC_VERSION"] = "1.0.2223347"  
 
 
     db.init_app(app)
@@ -82,6 +82,9 @@ def create_app():
             if "servicio social" in lbl: return "bi-people"
             if "inicio" in lbl: return "bi-house"
             if "mis solicitudes" in lbl: return "bi-file-earmark-text"
+            if "usuarios" in lbl: return "bi-people"
+            if "solicitudes" in lbl: return "bi-journal-text"
+            if "reportes" in lbl: return "bi-bar-chart"
             return "bi-grid"
 
         def is_active(url: str) -> bool:
@@ -100,13 +103,18 @@ def create_app():
                 {"label": "Mis solicitudes", "endpoint": "student_pages.student_requests", "roles": ["student"]},
             ]
             coord = [
-                {"label": "Dashboard", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator", "admin"]},
-                {"label": "Horario ", "endpoint": "coord_pages.coord_slots_page", "roles": ["coordinator", "admin"]},
-                {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator", "admin"]},
-                {"label": "Bajas", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator", "admin"]},
+                {"label": "Dashboard", "endpoint": "coord_pages.coord_home_page", "roles": ["coordinator"]},
+                {"label": "Horario ", "endpoint": "coord_pages.coord_slots_page", "roles": ["coordinator"]},
+                {"label": "Citas del día", "endpoint": "coord_pages.coord_appointments_page", "roles": ["coordinator"]},
+                {"label": "Bajas", "endpoint": "coord_pages.coord_drops_page", "roles": ["coordinator"]},
             ]
-
-            all_items = student + coord + social
+            admin_items = [
+                {"label":"Dashboard","endpoint":"admin_pages.admin_home","roles":["admin"]},
+                {"label":"Usuarios","endpoint":"admin_pages.admin_users","roles":["admin"]},
+                {"label":"Solicitudes","endpoint":"admin_pages.admin_requests","roles":["admin"]},
+                {"label":"Reportes","endpoint":"admin_pages.admin_reports","roles":["admin"]},
+            ]
+            all_items = student + coord + social + admin_items
             if not role:
                 return []
 
@@ -146,6 +154,7 @@ def register_blueprints(app):
     from routes.api.slots import api_slots_bp
     from routes.api.coord import api_coord_bp
     from routes.api.social import api_social_bp
+    from routes.api.admin import api_admin_bp
     from routes.api.notifications import api_notifications_bp
     app.register_blueprint(api_auth_bp, url_prefix="/api/v1/auth")
     app.register_blueprint(api_programs_bp, url_prefix="/api/v1")
@@ -154,6 +163,7 @@ def register_blueprints(app):
     app.register_blueprint(api_slots_bp, url_prefix="/api/v1")
     app.register_blueprint(api_coord_bp, url_prefix="/api/v1")
     app.register_blueprint(api_social_bp,url_prefix="/api/v1")
+    app.register_blueprint(api_admin_bp, url_prefix="/api/v1/admin")
     app.register_blueprint(api_notifications_bp,url_prefix="/api/v1")
 
     #Register blueprints for pages
@@ -161,15 +171,18 @@ def register_blueprints(app):
     from routes.pages.student import student_pages_bp
     from routes.pages.coord import coord_pages_bp
     from routes.pages.social import social_pages_bp
+    from routes.pages.admin import admin_pages_bp
     app.register_blueprint(social_pages_bp, url_prefix="/social")
     app.register_blueprint(pages_auth_bp, url_prefix="/auth")
     app.register_blueprint(student_pages_bp, url_prefix="/student")
     app.register_blueprint(coord_pages_bp, url_prefix="/coord")
+    app.register_blueprint(admin_pages_bp, url_prefix="/admin")
 
 def role_home(role: str) -> str:
         return { "student": "/student/home",
                  "coordinator": "/coord/home",
-                 "social_service": "/social/home" }.get(role, "/")
+                 "social_service": "/social/home",
+                  "admin":"/admin/home" }.get(role, "/")
 
 def register_error_handlers(app):
     MESSAGES = {

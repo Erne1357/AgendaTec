@@ -138,7 +138,7 @@
         body.innerHTML = `<div class="text-muted">No se encontró la solicitud.</div>`;
         actions.innerHTML = "";
       } else {
-        const alumno = it.student ? `${it.student.full_name || "—"} (#${it.student.control_number || "—"})` : "—";
+        const alumno = it.student ? `${it.student.full_name || "—"} (${it.student.control_number || it.student.username ||"—"})` : "—";
         body.innerHTML = `
           <div class="mb-1"><strong>Solicitud #${it.id}</strong></div>
           <div class="mb-1"><strong>Alumno:</strong> ${alumno}</div>

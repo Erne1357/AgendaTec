@@ -16,6 +16,7 @@ from utils.redis_conn import get_redis
 from sockets.requests import broadcast_appointment_created, broadcast_drop_created, broadcast_request_status_changed
 from utils.notify import create_notification
 from sockets.notifications import push_notification
+from datetime import datetime
 api_req_bp = Blueprint("api_requests", __name__)
 
 # Días permitidos
@@ -142,10 +143,16 @@ def create_request():
     if not slot or slot.is_booked:
         return jsonify({"error": "slot_unavailable"}), 409
 
+    
     # Día permitido (directo desde slot.day)
     if slot.day not in ALLOWED_DAYS:
         return jsonify({"error": "day_not_allowed", "allowed": [str(x) for x in sorted(ALLOWED_DAYS)]}), 400
-
+    
+    now = datetime.now()
+    slot_datetime = datetime.combine(slot.day, slot.start_time)
+    if now > slot_datetime:
+        return jsonify({"error": "slot_time_passed"}), 400
+    
     # El coordinador del slot debe estar vinculado al programa
     link = (db.session.query(ProgramCoordinator)
             .filter(ProgramCoordinator.program_id == program_id,
@@ -212,7 +219,7 @@ def create_request():
         # Notificar al alumno
         try:
             n = create_notification(
-                user_id=u.id,
+                user_id=u.id,  
                 type="APPOINTMENT_CREATED",
                 title="Cita agendada",
                 body=f"{slot_day} {slot.start_time.strftime('%H:%M')}–{slot.end_time.strftime('%H:%M')}",

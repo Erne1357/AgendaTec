@@ -569,6 +569,8 @@
           showToast("Ya tienes una solicitud.", "warn");
         } else if (err.error === "slot_unavailable") {
           showToast("El horario ya no está disponible.", "warn");
+        } else if (err.error === "slot_time_passed"){
+          showToast("El horario ya pasó.", "warn");
         } else if (err.error === "slot_conflict") {
           showToast("Conflicto al reservar, intenta otro horario.", "warn");
         } else if (err.error === "day_not_allowed") {
