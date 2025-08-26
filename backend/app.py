@@ -60,6 +60,20 @@ def create_app():
             )
         return resp
 
+    @app.teardown_request
+    def cleanup_db(exc=None):
+        # Si hubo excepción durante el request, revierte cualquier transacción pendiente
+        if exc is not None:
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
+        # En todos los casos, limpia la sesión para evitar fugas/conexiones colgadas
+        try:
+            db.session.remove()
+        except Exception:
+            pass
+
     @app.get("/health")
     def health():
         return {"ok": True}

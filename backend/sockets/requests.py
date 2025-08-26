@@ -3,6 +3,7 @@ from flask import g, request,current_app
 from flask_socketio import emit, join_room, leave_room
 from utils.socket_auth import current_user_from_environ
 import logging
+from models import db
 
 NAMESPACE = "/requests"
 
@@ -28,8 +29,12 @@ def register_request_events(socketio):
         emit("hello", {"msg": "WS /requests conectado"})
 
     @socketio.on("disconnect", namespace=NAMESPACE)
-    def on_disconnect():
-        pass
+    def on_disconnect(*args, **kwargs):
+        try:
+            # ... tu limpieza, por ejemplo:
+            db.session.remove()
+        except Exception:
+            pass
 
     # -------- Appointments (por día) ----------
     @socketio.on("join_ap_day", namespace=NAMESPACE)

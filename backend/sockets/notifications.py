@@ -2,6 +2,7 @@
 from flask import g, request
 from flask_socketio import emit, join_room
 from utils.socket_auth import current_user_from_environ
+from models import db
 
 NAMESPACE = "/notify"
 
@@ -20,8 +21,11 @@ def register_notification_events(socketio):
         emit("hello", {"msg": "WS /notify conectado", "uid": uid})
 
     @socketio.on("disconnect", namespace=NAMESPACE)
-    def on_disconnect():
-        pass
+    def on_disconnect(*args, **kwargs):
+        try:
+            db.session.remove()
+        except Exception:
+            pass
 
 # Emisor
 def push_notification(socketio, user_id: int, payload: dict):

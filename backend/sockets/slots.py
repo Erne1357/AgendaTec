@@ -48,8 +48,12 @@ def register_slot_events(socketio):
         emit("hello", {"msg": f"Conectado como {user.get('name') or user.get('cn')}"})
 
     @socketio.on("disconnect", namespace=NAMESPACE)
-    def on_disconnect():
-        pass
+    def on_disconnect(*args, **kwargs):
+        try:
+            # ... tu limpieza, por ejemplo:
+            db.session.remove()
+        except Exception:
+            pass
 
     @socketio.on("join_day", namespace=NAMESPACE)
     def on_join_day(data):
