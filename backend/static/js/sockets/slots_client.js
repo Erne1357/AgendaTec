@@ -18,6 +18,8 @@
     forceNew: false,
     reconnection: true,
     timeout: 20000,
+    transport: ["websocket"],
+    upgrade: true
   });
 
   window.__slotsSocket = socket; // útil en consola y para el request.js

@@ -2,7 +2,7 @@
 from datetime import date
 from flask import Blueprint, request, jsonify, g, current_app
 from sqlalchemy.exc import IntegrityError
-from utils.decorators import api_auth_required, api_role_required
+from utils.decorators import api_auth_required, api_role_required, api_closed
 from models import db
 from models.user import User
 from models.program import Program
@@ -68,6 +68,7 @@ def my_requests():
     })
 
 @api_req_bp.post("/requests")
+@api_closed
 @api_auth_required
 @api_role_required(["student"])
 def create_request():
@@ -242,6 +243,7 @@ def create_request():
         return jsonify({"error": "conflict"}), 409
 
 @api_req_bp.patch("/requests/<int:req_id>/cancel")
+@api_closed
 @api_auth_required
 @api_role_required(["student"])
 def cancel_request(req_id: int):

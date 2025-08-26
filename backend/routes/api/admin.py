@@ -128,8 +128,7 @@ def stats_overview():
     noshows = noshow_q.scalar() or 0
     no_show_rate = (noshows / denom) if denom else 0.0
 
-    # Pendientes por coordinador
-    pending_by_coord_q = (
+    pending_appointment_q = (
         db.session.query(
             Coordinator.id.label("coordinator_id"),
             User.full_name.label("coordinator_name"),
@@ -138,23 +137,41 @@ def stats_overview():
         .join(User, User.id == Coordinator.user_id)
         .join(Appointment, Appointment.coordinator_id == Coordinator.id)
         .join(Req, Req.id == Appointment.request_id)
-        .filter(Req.status == "PENDING")
+        .filter(Req.status == "PENDING", Req.type == "APPOINTMENT")
         .group_by(Coordinator.id, User.full_name)
         .order_by(func.count(Req.id).desc())
     )
-    #current_app.logger.warning("Primero : ", pending_by_coord)
-    pending_by_coord = [
+    pending_appointment = [
         dict(coordinator_id=i, coordinator_name=n, pending=p)
-        for (i, n, p) in pending_by_coord_q.all()
+        for (i, n, p) in pending_appointment_q.all()
     ]
-    #current_app.logger.warning("segundo : " , pending_by_coord)
 
+    # Pendientes por coordinador: DROP
+    pending_drop_q = (
+        db.session.query(
+            Coordinator.id.label("coordinator_id"),
+            User.full_name.label("coordinator_name"),
+            func.count(Req.id).label("pending"),
+        )
+        .join(User, User.id == Coordinator.user_id)
+        .join(ProgramCoordinator, ProgramCoordinator.coordinator_id == Coordinator.id)
+        .join(Req, Req.program_id == ProgramCoordinator.program_id)
+        .filter(Req.status == "PENDING", Req.type == "DROP")
+        .group_by(Coordinator.id, User.full_name)
+        .order_by(func.count(Req.id).desc())
+    )
+    pending_drop = [
+        dict(coordinator_id=i, coordinator_name=n, pending=p)
+        for (i, n, p) in pending_drop_q.all()
+    ]
+    # En tu respuesta JSON:
     return jsonify(
         {
             "totals": totals,
             "series": series,
             "no_show_rate": no_show_rate,
-            "pending_by_coordinator": pending_by_coord,
+            "pending_appointment": pending_appointment,
+            "pending_drop": pending_drop,
         }
     )
 
@@ -451,3 +468,211 @@ def export_requests_xlsx():
         as_attachment=True,
         download_name=filename,
     )
+
+# --- NUEVO: Stats por coordinador (pasteles) ---
+@api_admin_bp.get("/stats/coordinators")
+@api_auth_required
+@api_role_required(["admin"])
+def stats_coordinators():
+    """
+    Estadística por coordinador con TODAS las solicitudes.
+    - ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    - ?rtype=ALL|APPOINTMENT|DROP   (default: ALL)
+    - by_day=1   → desglose por día
+        * APPOINTMENT: usa TimeSlot.day
+        * DROP (u otras sin cita): usa DATE(Request.updated_at)
+    - states=1   → agrega campos por estado individual
+    """
+    start, end = _range_from_query()
+    start_date, end_date = start.date(), end.date()
+
+    by_day = (request.args.get("by_day", "0").lower() in ("1", "true", "yes"))
+    want_states = (request.args.get("states", "1").lower() in ("1", "true", "yes"))
+    rtype = (request.args.get("rtype", "ALL") or "ALL").upper()
+    if rtype not in ("ALL", "APPOINTMENT", "DROP"):
+        rtype = "ALL"
+
+    # ---- Columnas de agregación comunes (sobre Req.status) ----
+    is_pending     = case((Req.status == "PENDING", 1), else_=0)
+    is_attended    = case(
+        (Req.status.in_(("RESOLVED_SUCCESS", "RESOLVED_NOT_COMPLETED", "ATTENDED_OTHER_SLOT")), 1),
+        else_=0
+    )
+    is_unattended  = case((Req.status.in_(("NO_SHOW", "CANCELED")), 1), else_=0)
+
+    s_ok    = case((Req.status == "RESOLVED_SUCCESS", 1), else_=0)
+    s_nok   = case((Req.status == "RESOLVED_NOT_COMPLETED", 1), else_=0)
+    s_other = case((Req.status == "ATTENDED_OTHER_SLOT", 1), else_=0)  # será 0 para DROP
+    s_nshow = case((Req.status == "NO_SHOW", 1), else_=0)              # será 0 para DROP
+    s_canc  = case((Req.status == "CANCELED", 1), else_=0)
+
+    def _select_cols(day_col=None):
+        cols = [
+            Coordinator.id.label("coord_id"),
+            User.full_name.label("coord_name"),
+            func.count(Req.id).label("total"),
+            func.sum(is_pending).label("pending"),
+            func.sum(is_attended).label("attended"),
+            func.sum(is_unattended).label("unattended"),
+        ]
+        if want_states:
+            cols += [
+                func.sum(s_ok).label("resolved_success"),
+                func.sum(s_nok).label("resolved_not_completed"),
+                func.sum(s_other).label("attended_other_slot"),
+                func.sum(s_nshow).label("no_show"),
+                func.sum(s_canc).label("canceled"),
+            ]
+        if by_day and day_col is not None:
+            cols.insert(2, day_col.label("day"))  # después de coord_name
+        return cols
+
+    rows_all = []
+
+    # ---- Subconsulta: APPOINTMENT (por TimeSlot.day) ----
+    if rtype in ("ALL", "APPOINTMENT"):
+        day_col_ap = TimeSlot.day  # tipo Date
+        q_ap = (
+            db.session.query(*_select_cols(day_col_ap if by_day else None))
+            .join(Appointment, Appointment.request_id == Req.id)
+            .join(TimeSlot, TimeSlot.id == Appointment.slot_id)
+            .join(Coordinator, Coordinator.id == Appointment.coordinator_id)
+            .join(User, User.id == Coordinator.user_id)
+            .filter(
+                Req.type == "APPOINTMENT",
+                day_col_ap >= start_date,
+                day_col_ap <= end_date,
+            )
+        )
+        grp_ap = [Coordinator.id, User.full_name]
+        if by_day:
+            grp_ap.append(day_col_ap)
+        q_ap = q_ap.group_by(*grp_ap).order_by(User.full_name.asc(), *( [day_col_ap.asc()] if by_day else [] ))
+        rows_all.extend(q_ap.all())
+
+    # ---- Subconsulta: DROP (u otras sin cita) por Program → ProgramCoordinator ----
+    # Día = DATE(updated_at) → "cuando se revisaron"
+    if rtype in ("ALL", "DROP"):
+        drop_day_col = cast(Req.updated_at, Date)
+        q_drop = (
+            db.session.query(*_select_cols(drop_day_col if by_day else None))
+            .join(Program, Program.id == Req.program_id)
+            .join(ProgramCoordinator, ProgramCoordinator.program_id == Program.id)
+            .join(Coordinator, Coordinator.id == ProgramCoordinator.coordinator_id)
+            .join(User, User.id == Coordinator.user_id)
+            .filter(
+                Req.type == "DROP",
+                drop_day_col >= start_date,
+                drop_day_col <= end_date,
+            )
+        )
+        grp_drop = [Coordinator.id, User.full_name]
+        if by_day:
+            grp_drop.append(drop_day_col)
+        q_drop = q_drop.group_by(*grp_drop).order_by(User.full_name.asc(), *( [drop_day_col.asc()] if by_day else [] ))
+        rows_all.extend(q_drop.all())
+
+    # ---- Reducir / combinar ambas listas de filas ----
+    from collections import defaultdict
+
+    overall = defaultdict(int)
+    overall_by_day = defaultdict(lambda: defaultdict(int))
+    per_coord = {}
+    per_coord_days = defaultdict(lambda: defaultdict(int))  # acumular por día y coord
+
+    def add_to_bucket(bucket: dict, r):
+        bucket["total"]      = int(bucket.get("total", 0))      + int(r.total or 0)
+        bucket["pending"]    = int(bucket.get("pending", 0))    + int(r.pending or 0)
+        bucket["attended"]   = int(bucket.get("attended", 0))   + int(r.attended or 0)
+        bucket["unattended"] = int(bucket.get("unattended", 0)) + int(r.unattended or 0)
+        if want_states:
+            st = bucket.setdefault("states", defaultdict(int))
+            st["RESOLVED_SUCCESS"]       += int(getattr(r, "resolved_success", 0) or 0)
+            st["RESOLVED_NOT_COMPLETED"] += int(getattr(r, "resolved_not_completed", 0) or 0)
+            st["ATTENDED_OTHER_SLOT"]    += int(getattr(r, "attended_other_slot", 0) or 0)
+            st["NO_SHOW"]                += int(getattr(r, "no_show", 0) or 0)
+            st["CANCELED"]               += int(getattr(r, "canceled", 0) or 0)
+
+    for r in rows_all:
+        cid = int(r.coord_id)
+
+        # Crear entrada del coordinador si no existe
+        if cid not in per_coord:
+            per_coord[cid] = {
+                "coordinator_id": cid,
+                "coordinator_name": r.coord_name,
+                "totals": {"total": 0, "pending": 0, "attended": 0, "unattended": 0}
+            }
+            if want_states:
+                per_coord[cid]["totals"]["states"] = {
+                    "RESOLVED_SUCCESS": 0,
+                    "RESOLVED_NOT_COMPLETED": 0,
+                    "ATTENDED_OTHER_SLOT": 0,
+                    "NO_SHOW": 0,
+                    "CANCELED": 0,
+                }
+
+        # Acumular totales por coordinador y global
+        add_to_bucket(per_coord[cid]["totals"], r)
+        add_to_bucket(overall, r)
+
+        # Acumular por día (si aplica)
+        if by_day:
+            # r.day puede ser date o datetime; normalizamos a ISO (YYYY-MM-DD)
+            d_iso = (r.day.isoformat() if r.day else None)
+            if d_iso:
+                # coord + day
+                day_bucket = per_coord_days[cid].setdefault(d_iso, {"day": d_iso, "total": 0, "pending": 0, "attended": 0, "unattended": 0})
+                if want_states and "states" not in day_bucket:
+                    day_bucket["states"] = {
+                        "RESOLVED_SUCCESS": 0,
+                        "RESOLVED_NOT_COMPLETED": 0,
+                        "ATTENDED_OTHER_SLOT": 0,
+                        "NO_SHOW": 0,
+                        "CANCELED": 0,
+                    }
+                add_to_bucket(day_bucket, r)
+
+                # overall by day
+                add_to_bucket(overall_by_day[d_iso], r)
+
+    # Serializar coordinadores (orden por nombre)
+    coord_list = []
+    for cid, obj in sorted(per_coord.items(), key=lambda kv: kv[1]["coordinator_name"] or ""):
+        if by_day:
+            # pasar map→lista ordenada
+            days_map = per_coord_days.get(cid, {})
+            obj["days"] = [days_map[k] for k in sorted(days_map.keys())]
+        if want_states:
+            # a dict plano
+            st = obj["totals"].get("states")
+            if st and isinstance(st, defaultdict):
+                obj["totals"]["states"] = dict(st)
+        coord_list.append(obj)
+
+    # Global
+    overall_out = dict(overall)
+    if want_states and "states" in overall_out and isinstance(overall_out["states"], defaultdict):
+        overall_out["states"] = dict(overall_out["states"])
+
+    resp = {
+        "range": {"from": start.isoformat(), "to": end.isoformat()},
+        "filter": {"rtype": rtype, "by_day": by_day, "states": want_states},
+        "overall": overall_out,
+        "coordinators": coord_list,
+    }
+
+    if by_day:
+        # overall_by_day map → lista ordenada
+        ob = []
+        for d in sorted(overall_by_day.keys()):
+            vals = overall_by_day[d]
+            row = {"day": d}
+            row.update({k: v for k, v in vals.items() if k != "states"})
+            if want_states and "states" in vals:
+                st = vals["states"]
+                row["states"] = dict(st) if isinstance(st, defaultdict) else st
+            ob.append(row)
+        resp["overall_by_day"] = ob
+
+    return jsonify(resp)

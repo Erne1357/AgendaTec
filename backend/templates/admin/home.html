@@ -3,98 +3,168 @@
 
 {% block extra_css %}
 <style>
-  .metric-card { min-height: 110px; }
-  .metric-value { font-size: 1.8rem; font-weight: 700; }
-  .metric-sub { color: #6c757d; }
-  .card-scroll { max-height: 380px; overflow: auto; }
+    .metric-card {
+        min-height: 110px;
+    }
+
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+
+    .metric-sub {
+        color: #6c757d;
+    }
+
+    .card-scroll {
+        max-height: 380px;
+        overflow: auto;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
-  <h1 class="h4 mb-0">Dashboard de Administración</h1>
-  <div class="d-flex gap-2">
-    <input id="fltFrom" type="date" class="form-control form-control-sm">
-    <input id="fltTo" type="date" class="form-control form-control-sm">
-    <button id="btnApplyRange" class="btn btn-primary btn-sm">
-      <i class="bi bi-arrow-repeat"></i> Actualizar
-    </button>
-  </div>
+    <h1 class="h4 mb-0">Dashboard de Administración</h1>
+    <div class="d-flex gap-2">
+        <input id="fltFrom" type="date" class="form-control form-control-sm">
+        <input id="fltTo" type="date" class="form-control form-control-sm">
+        <button id="btnApplyRange" class="btn btn-primary btn-sm">
+            <i class="bi bi-arrow-repeat"></i> Actualizar
+        </button>
+    </div>
 </div>
 
-<div class="row g-3">
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card metric-card shadow-sm">
-      <div class="card-body">
-        <div class="metric-sub">Pendientes</div>
-        <div id="mPending" class="metric-value">–</div>
-      </div>
+<div class="row g-5">
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card metric-card shadow-sm">
+            <div class="card-body">
+                <div class="metric-sub">Pendientes</div>
+                <div id="mPending" class="metric-value">–</div>
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card metric-card shadow-sm">
-      <div class="card-body">
-        <div class="metric-sub">Resueltas</div>
-        <div id="mSolved" class="metric-value">–</div>
-      </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card metric-card shadow-sm">
+            <div class="card-body">
+                <div class="metric-sub">Resueltas</div>
+                <div id="mSolved" class="metric-value">–</div>
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card metric-card shadow-sm">
-      <div class="card-body">
-        <div class="metric-sub">Atendidas sin resolver</div>
-        <div id="mNotCompleted" class="metric-value">–</div>
-      </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card metric-card shadow-sm">
+            <div class="card-body">
+                <div class="metric-sub">Atendidas sin resolver</div>
+                <div id="mNotCompleted" class="metric-value">–</div>
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card metric-card shadow-sm">
-      <div class="card-body">
-        <div class="metric-sub">No asistieron</div>
-        <div id="mNoShow" class="metric-value">–</div>
-      </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card metric-card shadow-sm">
+            <div class="card-body">
+                <div class="metric-sub">No asistieron</div>
+                <div id="mNoShow" class="metric-value">–</div>
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card metric-card shadow-sm">
-      <div class="card-body">
-        <div class="metric-sub">Otro horario</div>
-        <div id="mOtherSlot" class="metric-value">–</div>
-      </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card metric-card shadow-sm">
+            <div class="card-body">
+                <div class="metric-sub">Otro horario</div>
+                <div id="mOtherSlot" class="metric-value">–</div>
+            </div>
+        </div>
     </div>
-  </div>
-  <div class="col-6 col-md-4 col-lg-2">
-    <div class="card metric-card shadow-sm">
-      <div class="card-body">
-        <div class="metric-sub">Canceladas</div>
-        <div id="mCanceled" class="metric-value">–</div>
-      </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <div class="card metric-card shadow-sm">
+            <div class="card-body">
+                <div class="metric-sub">Canceladas</div>
+                <div id="mCanceled" class="metric-value">–</div>
+            </div>
+        </div>
     </div>
-  </div>
 </div>
 
 <div class="row g-3 mt-1">
-  <div class="col-12 col-lg-8">
-    <div class="card shadow-sm">
-      <div class="card-header d-flex align-items-center justify-content-between">
-        <span class="fw-semibold">Solicitudes por día</span>
-        <small class="text-muted">rango aplicado</small>
+    <div class="col-12 col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <span class="fw-semibold">Solicitudes por día</span>
+                <small class="text-muted">rango aplicado</small>
+            </div>
+            <div class="card-body">
+                <canvas id="chSeries" height="110"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <span class="fw-semibold">Pendientes por coordinador</span>
+            </div>
+            <div class="card-body card-scroll">
+                <div style="text-align: center;">
+                    <span class="me-3">
+                    <span class="d-inline-block rounded-circle bg-primary me-1"
+                        style="width:10px;height:10px;vertical-align:middle;"></span>
+                    Citas
+                </span>
+                <span class="me-3">
+                    <span class="d-inline-block rounded-circle bg-danger me-1"
+                        style="width:10px;height:10px;vertical-align:middle;"></span>
+                    Bajas
+                </span>
+                </div>
+                <ul id="lstPendingByCoord" class="list-group list-group-flush small"></ul>
+            </div>
+            <div class="card-footer">
+                No-show rate: <span id="lblNoShowRate" class="fw-semibold">–</span>
+            </div>
+        </div>
+    </div>
+</div><div class="card shadow-sm mt-3">
+  <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+    <span class="fw-semibold me-auto">Coordinadores · Distribución</span>
+
+    <div class="d-flex gap-2">
+      <div class="input-group input-group-sm" title="Vista">
+        <span class="input-group-text">Vista</span>
+        <select id="pieMode" class="form-select form-select-sm">
+          <option value="3cat">3 categorías</option>
+          <option value="estados">Estados detallados</option>
+        </select>
       </div>
-      <div class="card-body">
-        <canvas id="chSeries" height="110"></canvas>
+
+      <div class="form-check form-switch">
+        <input id="pieByDay" class="form-check-input" type="checkbox">
+        <label class="form-check-label" for="pieByDay">Por día (slot.day)</label>
       </div>
+
+      <select id="pieDay" class="form-select form-select-sm" style="width: auto; min-width: 140px;" hidden>
+        <!-- días dinámicos -->
+      </select>
+
+      <button id="btnPiesReload" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-arrow-repeat"></i>
+      </button>
     </div>
   </div>
-  <div class="col-12 col-lg-4">
-    <div class="card shadow-sm">
-      <div class="card-header">
-        <span class="fw-semibold">Pendientes por coordinador</span>
+
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <div class="border rounded p-2">
+          <h6 class="mb-2">Global</h6>
+          <canvas id="chCoordGlobal" height="220"></canvas>
+          <small id="lblGlobalTotal" class="text-muted"></small>
+        </div>
       </div>
-      <div class="card-body card-scroll">
-        <ul id="lstPendingByCoord" class="list-group list-group-flush small"></ul>
-      </div>
-      <div class="card-footer">
-        No-show rate: <span id="lblNoShowRate" class="fw-semibold">–</span>
+      <div class="col-12 col-lg-6">
+        <div class="border rounded p-2">
+          <h6 class="mb-2">Por coordinador</h6>
+          <div id="miniPieGrid" class="row g-3"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -102,12 +172,17 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- Reutilizaremos el cliente de /requests para refrescar en vivo (sin duplicar) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="{{ url_for('static', filename='js/sockets/requests_client.js') }}?v={{ static_version }}"></script>
-<script>
-  // Solo wiring mínimo; el JS final lo armamos cuando me compartas eventos/payloads.
-  window.__adminDashboard = { fetchUrl: "{{ url_for('api_admin.stats_overview') }}" };
-</script>
-<script src="{{ url_for('static', filename='js/admin/home.js') }}?v={{ static_version }}"></script>
+  <!-- Si aún no cargas Chart.js en esta página: -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Ya tenías esto para el dashboard general -->
+  <script src="{{ url_for('static', filename='js/sockets/requests_client.js') }}?v={{ static_version }}"></script>
+  <script>
+    window.__adminDashboard = { 
+      Url: "{{ url_for('api_admin.stats_overview') }}",
+      piesUrl:  "{{ url_for('api_admin.stats_coordinators') }}"
+    };
+  </script>
+  <script src="{{ url_for('static', filename='js/admin/home.js') }}?v={{ static_version }}"></script>
+  <script src="{{ url_for('static', filename='js/admin/home_pies.js') }}?v={{ static_version }}"></script>
 {% endblock %}

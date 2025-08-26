@@ -10,6 +10,8 @@
     withCredentials: true,
     reconnection: true,
     timeout: 20000,
+    transport: ["websocket"],
+    upgrade: true
   });
   window.__reqSocket = socket;
 

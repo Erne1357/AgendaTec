@@ -4,6 +4,8 @@ from models import db
 from utils.jwt_tools import encode_jwt, decode_jwt
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
+from utils.admit_window import is_student_window_open, get_student_window
+
 
 import logging
 
@@ -17,7 +19,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.22233471"  
+    app.config["STATIC_VERSION"] = "1.0.222334749"  
 
 
     db.init_app(app)
@@ -86,6 +88,9 @@ def create_app():
     
     @app.context_processor
     def inject_globals():
+        _student_open = is_student_window_open()
+        _win = get_student_window()
+
         def _icon_for(label: str) -> str:
             lbl = (label or "").lower()
             if "dashboard" in lbl: return "bi-grid"
@@ -130,6 +135,9 @@ def create_app():
             ]
             all_items = student + coord + social + admin_items
             if not role:
+                return []
+            
+            if role == "student" and not _student_open:
                 return []
 
             # ----- Filtrar por rol -----

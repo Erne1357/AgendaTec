@@ -1,6 +1,9 @@
 from functools import wraps
 from flask import g, request, redirect, url_for, jsonify, current_app
-import logging
+from utils.admit_window import is_student_window_open
+import logging, os
+from datetime import datetime
+
 
 def login_required(view):
     @wraps(view)
@@ -62,5 +65,21 @@ def coord_pw_changed_required(view):
             if coord and getattr(coord, "must_change_pw", False):
                 # Redirige a home del coordinador (donde está el modal)
                 return redirect(url_for("coord_pages.coord_home_page"))
+        return view(*args, **kwargs)
+    return wrapper
+
+def student_app_closed(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not is_student_window_open():
+            return redirect(url_for('student_pages.student_close'))
+        return view(*args, **kwargs)
+    return wrapper
+
+def api_closed(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not is_student_window_open():
+            return jsonify({'status':'error','message':'El período de admisión ha finalizado.'}), 423
         return view(*args, **kwargs)
     return wrapper
