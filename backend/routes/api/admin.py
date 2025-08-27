@@ -93,15 +93,35 @@ def stats_overview():
     )
     totals = [{"status": s, "total": t} for (s, t) in totals_q.all()]
 
-    # Serie diaria de solicitudes (últimos N días del rango)
-    # Postgres: date_trunc('day', ...). Portátil: cast(Req.created_at, Date)
-    daily_q = (
-        db.session.query(cast(Req.created_at, Date).label("day"), func.count(Req.id))
+    def _dialect_name():
+        try:
+            bind = db.session.get_bind()  # devuelve el engine activo para esta sesión
+        except Exception:
+            bind = None
+        try:
+            eng = bind or db.engine        # respaldo: engine principal
+        except Exception:
+            eng = None
+        return (eng and eng.dialect and eng.dialect.name) or ""
+
+    is_pg = _dialect_name().startswith("postgres")
+
+    if is_pg:
+        hour_bucket = func.date_trunc("hour", Req.created_at).label("hour")
+    else:
+        # SQLite: usa strftime; en otros, ajusta según backend
+        hour_bucket = func.strftime("%Y-%m-%d %H:00:00", Req.created_at).label("hour")
+
+    hourly_q = (
+        db.session.query(hour_bucket, func.count(Req.id))
         .filter(Req.created_at >= start, Req.created_at <= end)
-        .group_by(cast(Req.created_at, Date))
-        .order_by(cast(Req.created_at, Date))
+        .group_by(hour_bucket)
+        .order_by(hour_bucket)
     )
-    series = [{"day": d.isoformat(), "total": n} for (d, n) in daily_q.all()]
+
+    series = []
+    for h, n in hourly_q.all():
+        series.append({"hour": h.isoformat() if hasattr(h, "isoformat") else str(h), "total": n})
 
     # No-show rate (Appointments): NO_SHOW / (DONE + NO_SHOW)
     denom_q = (
