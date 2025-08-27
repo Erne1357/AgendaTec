@@ -12,12 +12,14 @@
     return;
   }
 
-  // Exponer recarga para que otras partes (tabs / rango / realtime) la usen
+  // Exponer recarga para que otras partes lo usen (tabs / rango / realtime)
   window.__reloadPies = reloadPies;
 
   let chGlobal = null;
   const miniCharts = new Map();
+  let suppressDayChange = false; // evita loop al repoblar el select
 
+  // ------- Query -------
   function buildQuery() {
     const q = new URLSearchParams();
     const from = $("#fltFrom")?.value;
@@ -25,27 +27,36 @@
     if (from) q.set("from", from);
     if (to)   q.set("to", to);
     if ($("#pieByDay")?.checked) q.set("by_day", "1");
-    q.set("states", "1");
+    q.set("states", "1"); // SIEMPRE pedimos estados detallados
     return q.toString();
   }
 
-  function as3Cat(totals) {
-    return [
-      { label: "Atendidas",    value: Number(totals?.attended   || 0) },
-      { label: "Pendientes",   value: Number(totals?.pending    || 0) },
-      { label: "No atendidas", value: Number(totals?.unattended || 0) },
-    ];
-  }
-  function asStates(totals) {
+  // ------- Estados (siempre 6) -------
+  const STATE_ORDER = [
+    "PENDING",
+    "RESOLVED_SUCCESS",
+    "RESOLVED_NOT_COMPLETED",
+    "ATTENDED_OTHER_SLOT",
+    "NO_SHOW",
+    "CANCELED",
+  ];
+  const STATE_LABEL = {
+    PENDING: "Pendientes",
+    RESOLVED_SUCCESS: "Resueltas",
+    RESOLVED_NOT_COMPLETED: "Atendidas sin resolver",
+    ATTENDED_OTHER_SLOT: "Otro horario",
+    NO_SHOW: "No asistió",
+    CANCELED: "Canceladas",
+  };
+
+  function toStatesArray(totals) {
     const st = totals?.states || {};
-    return [
-      { label: "Resueltas",     value: Number(st["RESOLVED_SUCCESS"]       || 0) },
-      { label: "No resueltas",  value: Number(st["RESOLVED_NOT_COMPLETED"] || 0) },
-      { label: "Otro horario",  value: Number(st["ATTENDED_OTHER_SLOT"]    || 0) },
-      { label: "No asistió",    value: Number(st["NO_SHOW"]                || 0) },
-      { label: "Canceladas",    value: Number(st["CANCELED"]               || 0) },
-    ];
+    return STATE_ORDER.map(code => ({
+      label: STATE_LABEL[code],
+      value: Number(st[code] || 0),
+    }));
   }
+
   function sum(arr, key = "value") {
     return (arr || []).reduce((a, b) => a + Number(b?.[key] || 0), 0);
   }
@@ -60,11 +71,11 @@
   function destroyGlobal() { try { chGlobal?.destroy?.(); } catch {} chGlobal = null; }
   function destroyMiniCharts() { miniCharts.forEach(ch => { try { ch.destroy?.(); } catch {} }); miniCharts.clear(); }
 
+  // ------- Render: Global -------
   function drawGlobal(data, total) {
     destroyGlobal();
     const cv = $("#chCoordGlobal");
     if (!cv) return;
-    // El contenedor tiene altura fija via CSS (.pieHost)
     chGlobal = new Chart(cv, {
       type: "pie",
       data: { labels: data.map(d => d.label), datasets: [{ data: data.map(d => d.value) }] },
@@ -80,7 +91,8 @@
     if (lbl) lbl.textContent = `Total: ${Number(total || 0)}`;
   }
 
-  function drawMini(coordList, byDay, selectedDay, mode) {
+  // ------- Render: Por coordinador -------
+  function drawMini(coordList, byDay, selectedDay) {
     const grid = $("#miniPieGrid");
     if (!grid) return;
     destroyMiniCharts();
@@ -89,9 +101,9 @@
     for (const c of (coordList || [])) {
       const totals = (!byDay || !selectedDay)
         ? c.totals
-        : (c.days || []).find(x => x.day === selectedDay) || { total:0, pending:0, attended:0, unattended:0, states:{} };
+        : (c.days || []).find(x => x.day === selectedDay) || { total:0, states:{} };
 
-      const data = (mode === "3cat") ? as3Cat(totals) : asStates(totals);
+      const data = toStatesArray(totals);
       const total = Number(totals?.total || sum(data));
 
       const col = document.createElement("div");
@@ -102,7 +114,9 @@
             <strong class="text-truncate" title="${escapeHtml(c.coordinator_name || "—")}">${escapeHtml(c.coordinator_name || "—")}</strong>
             <small class="text-muted">#${c.coordinator_id}</small>
           </div>
-          <div class="miniPieBox"><canvas id="miniPie-${c.coordinator_id}" style="width:100%; height:100%;"></canvas></div>
+          <div class="miniPieBox" style="position:relative; height: 180px;">
+            <canvas id="miniPie-${c.coordinator_id}" style="width:100%; height:100%;"></canvas>
+          </div>
           <small class="text-muted">Total: ${total}</small>
         </div>`;
       grid.appendChild(col);
@@ -123,38 +137,58 @@
     }
   }
 
+  // ------- util: poblar <select id="pieDay"> sin loop -------
+  function setDayOptions(days) {
+    const sel = $("#pieDay");
+    if (!sel) return null;
+    const prev = sel.value;
+    const existing = Array.from(sel.options).map(o => o.value);
+    const same = days.length === existing.length && days.every((d,i)=>d===existing[i]);
+
+    suppressDayChange = true;
+    if (!same) {
+      sel.innerHTML = days.map(d => `<option value="${d}">${d}</option>`).join("");
+    }
+    // preserva selección si existe, si no, toma primera
+    if (prev && days.includes(prev)) {
+      sel.value = prev;
+    } else {
+      sel.value = days[0] || "";
+    }
+    suppressDayChange = false;
+    return sel.value || null;
+  }
+
+  // ------- Fetch + Orquestación -------
   async function reloadPies() {
     try {
       const byDay = $("#pieByDay")?.checked;
-      const mode = $("#pieMode")?.value || "3cat";
       const r = await fetch(`${piesUrl}?${buildQuery()}`, { credentials: "include" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
 
-      // Selector de días
-      const sel = $("#pieDay");
+      // Selector de días (solo repoblar si cambió el conjunto)
       let selectedDay = null;
+      const sel = $("#pieDay");
       if (byDay) {
         const days = (j.overall_by_day || []).map(d => d.day);
         sel.hidden = days.length === 0;
-        sel.innerHTML = days.map(d => `<option value="${d}">${d}</option>`).join("");
-        if (!sel.value || !days.includes(sel.value)) sel.value = days[0] || "";
-        selectedDay = sel.value || null;
+        selectedDay = setDayOptions(days);
       } else {
-        sel.hidden = true; sel.innerHTML = "";
+        if (sel) { sel.hidden = true; sel.innerHTML = ""; }
       }
 
-      // Global
-      let totalsGlobal = j.overall || { total:0, pending:0, attended:0, unattended:0, states:{} };
+      // Global (usa estados detallados)
+      let totalsGlobal = j.overall || { total:0, states:{} };
       if (byDay && selectedDay) {
         const dobj = (j.overall_by_day || []).find(x => x.day === selectedDay);
-        totalsGlobal = dobj || totalsGlobal;
+        if (dobj) totalsGlobal = dobj;
       }
-      const dataGlobal = (mode === "3cat") ? as3Cat(totalsGlobal) : asStates(totalsGlobal);
+      const dataGlobal = toStatesArray(totalsGlobal);
       drawGlobal(dataGlobal, totalsGlobal?.total ?? sum(dataGlobal));
 
       // Por coordinador
-      drawMini(j.coordinators || [], byDay, selectedDay, mode);
+      drawMini(j.coordinators || [], byDay, selectedDay);
 
     } catch (e) {
       try { showToast?.("Error al cargar pasteles de coordinadores", "error"); } catch {}
@@ -166,31 +200,25 @@
     }
   }
 
-  // Controles (bind una sola vez)
+  // ------- Controles -------
   $("#btnPiesReload")?.addEventListener("click", reloadPies);
-  $("#pieMode")?.addEventListener("change", reloadPies);
   $("#pieByDay")?.addEventListener("change", () => {
     const el = $("#pieDay");
     if (el) el.hidden = !$("#pieByDay").checked;
     reloadPies();
   });
-  $("#pieDay")?.addEventListener("change", reloadPies);
+  $("#pieDay")?.addEventListener("change", () => {
+    if (suppressDayChange) return; // evita loop al repoblar
+    reloadPies();
+  });
 
-  // Realtime (solo para pasteles)
-  (function wireRealtime() {
-    const tryBind = () => {
-      const s = window.__reqSocket;
-      if (!s) return setTimeout(tryBind, 400);
-      const debounced = debounce(reloadPies, 600);
-      s.off?.("appointment_created");
-      s.off?.("request_status_changed");
-      s.on("appointment_created", debounced);
-      s.on("request_status_changed", debounced);
-    };
-    tryBind();
-  })();
+  // Cuando cambies de tab a los pasteles, recarga justo ahí
+  document.addEventListener("shown.bs.tab", (ev) => {
+    const id = ev?.target?.id;
+    if (id === "tabPieGlobal" || id === "tabPieMini") reloadPies();
+  });
 
-  // Importante: solo pinta si el tab de pasteles está visible
+  // Solo pinta si el tab de pasteles ya está visible
   const activeTabId = document.querySelector("#leftTabs .nav-link.active")?.id;
   if (activeTabId === "tabPieGlobal" || activeTabId === "tabPieMini") {
     reloadPies();

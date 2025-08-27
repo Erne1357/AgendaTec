@@ -18,20 +18,26 @@ from models.appointment import Appointment
 from models.time_slot import TimeSlot
 from models.notification import Notification
 from models.audit_log import AuditLog
+from models.survey_dispatches import SurveyDispatch
 
 from utils.decorators import api_auth_required, api_role_required
 from utils.jwt_tools import encode_jwt
 from utils.security import hash_nip  # si ya tienes util p/ NIP hash (ajusta si difiere)
 from utils.notify import create_notification as notify_user  # si ya tienes un helper (ajusta si difiere)
-import logging
+import logging,os
 from xlsxwriter import Workbook
+from utils.msgraph_mail import acquire_token_silent, graph_send_mail
+from urllib.parse import urlencode, urlparse, parse_qsl, urlunparse
+from utils.email_tools import student_email
+
 # XLSX
 from io import BytesIO
 
 import pandas as pd
 
 api_admin_bp = Blueprint("api_admin", __name__)
-
+ATTENDED_STATES = ("RESOLVED_SUCCESS", "RESOLVED_NOT_COMPLETED", "ATTENDED_OTHER_SLOT")
+EXCLUDE_STATES  = ("CANCELED", "NO_SHOW","PENDING")
 # ---------- Helpers ----------
 
 def _parse_dt(s: Optional[str], default: Optional[datetime] = None) -> datetime:
@@ -76,7 +82,85 @@ def _ensure_admin():
     if not u or u.get("role") != "admin":
         from flask import abort
         abort(403)
+def _add_query_params(url: str, **params) -> str:
+    """
+    Agrega/mezcla query params a una URL (p.ej. SURVEY_FORMS_URL?cn=...).
+    """
+    pr = urlparse(url)
+    q = dict(parse_qsl(pr.query))
+    q.update({k: v for k, v in params.items() if v is not None})
+    new_q = urlencode(q)
+    return urlunparse((pr.scheme, pr.netloc, pr.path, pr.params, new_q, pr.fragment))
 
+def _student_email_from_user(u: User) -> Optional[str]:
+    """
+    Regla pedida:
+    - Si username ya es un correo (contiene @) -> úsalo.
+    - Si username existe (sin arroba) -> username@EMAIL_DOMAIN
+    - Si no hay username, pero hay control_number -> L{control_number}@EMAIL_DOMAIN
+    """
+    domain = os.getenv("EMAIL_DOMAIN", "").strip()
+    # Si no hay dominio y SENDER_UPN existe, usar el dominio del remitente
+    if not domain:
+        sender = os.getenv("MAIL_SENDER_UPN", "")
+        if "@" in sender:
+            domain = sender.split("@", 1)[1].strip().lower()
+
+    if u.username:
+        un = u.username.strip()
+        if "@" in un:
+            return un.lower()
+        if domain:
+            return f"{un.lower()}@{domain}"
+    if u.control_number and domain:
+        cn = u.control_number.strip().upper()
+        if not cn.startswith("L"):
+            cn = "L" + cn
+        return f"{cn.lower()}@{domain}"
+    return None
+
+def _student_identifier(u: User) -> str:
+    """
+    Identificador para pasar al Forms (param 'cn'): usa control_number si existe;
+    si no, usa username.
+    """
+    return (getattr(u, "control_number", None) or getattr(u, "username", "") or "").strip()
+def find_recipients(start, end, campaign_code: str, skip_already_sent: bool = True, limit=500, offset=0):
+    """
+    Retorna [(user, request, email)] para enviar encuesta.
+    Regla: cualquier Req cuyo estado NO esté en CANCELED/NO_SHOW y que pertenezca a un coordinador (ligado a programa),
+    usando updated_at para bajas y slot.day para citas (si tu SQL ya arma eso, perfecto).
+    """
+
+    # Base: requests atendidas (no cancel/no_show) en rango por su "evento" (tu ya lo definiste).
+    q = (
+        db.session.query(User, Req)
+        .join(User, User.id == Req.user_id)
+        .filter(Req.status.notin_(EXCLUDE_STATES))
+        .filter(and_(Req.updated_at >= start, Req.updated_at <= end))   # Para bajas y también sirve como fallback general
+        # si tienes tipo "APPOINTMENT" y deseas usar slot.day, arma un UNION o un OR con subquery; para mantenerlo simple:
+        # .filter(or_(Req.type == "DROP", … condición APPOINTMENT …))
+    )
+
+    if skip_already_sent:
+        q = q.outerjoin(
+            SurveyDispatch,
+            and_(
+                SurveyDispatch.campaign_code == campaign_code,
+                SurveyDispatch.user_id == User.id,
+            ),
+        ).filter(SurveyDispatch.id.is_(None))
+
+    q = q.order_by(User.full_name.asc()).limit(limit).offset(offset)
+
+    rows = q.all()
+    out = []
+    for u, r in rows:
+        em = student_email(u)
+        if not em:
+            continue
+        out.append((u, r, em))
+    return out
 # ---------- Stats Overview ----------
 
 @api_admin_bp.get("/stats/overview")
@@ -92,7 +176,7 @@ def stats_overview():
         .group_by(Req.status)
     )
     totals = [{"status": s, "total": t} for (s, t) in totals_q.all()]
-
+    current_app.logger.warning(totals)
     def _dialect_name():
         try:
             bind = db.session.get_bind()  # devuelve el engine activo para esta sesión
@@ -525,6 +609,7 @@ def stats_coordinators():
     s_other = case((Req.status == "ATTENDED_OTHER_SLOT", 1), else_=0)  # será 0 para DROP
     s_nshow = case((Req.status == "NO_SHOW", 1), else_=0)              # será 0 para DROP
     s_canc  = case((Req.status == "CANCELED", 1), else_=0)
+    s_pend  = case((Req.status == "PENDING" , 1), else_=0)
 
     def _select_cols(day_col=None):
         cols = [
@@ -542,6 +627,7 @@ def stats_coordinators():
                 func.sum(s_other).label("attended_other_slot"),
                 func.sum(s_nshow).label("no_show"),
                 func.sum(s_canc).label("canceled"),
+                func.sum(s_pend).label("pending"),
             ]
         if by_day and day_col is not None:
             cols.insert(2, day_col.label("day"))  # después de coord_name
@@ -612,6 +698,7 @@ def stats_coordinators():
             st["ATTENDED_OTHER_SLOT"]    += int(getattr(r, "attended_other_slot", 0) or 0)
             st["NO_SHOW"]                += int(getattr(r, "no_show", 0) or 0)
             st["CANCELED"]               += int(getattr(r, "canceled", 0) or 0)
+            st["PENDING"]                += int(getattr(r, "pending", 0) or 0)
 
     for r in rows_all:
         cid = int(r.coord_id)
@@ -630,6 +717,7 @@ def stats_coordinators():
                     "ATTENDED_OTHER_SLOT": 0,
                     "NO_SHOW": 0,
                     "CANCELED": 0,
+                    "PENDING": 0,
                 }
 
         # Acumular totales por coordinador y global
@@ -650,6 +738,7 @@ def stats_coordinators():
                         "ATTENDED_OTHER_SLOT": 0,
                         "NO_SHOW": 0,
                         "CANCELED": 0,
+                        "PENDING" : 0,
                     }
                 add_to_bucket(day_bucket, r)
 
@@ -694,5 +783,75 @@ def stats_coordinators():
                 row["states"] = dict(st) if isinstance(st, defaultdict) else st
             ob.append(row)
         resp["overall_by_day"] = ob
-
+    current_app.logger.warning(f"Resp {resp}")
     return jsonify(resp)
+
+#-----------------Email ---------------------
+@api_admin_bp.post("/surveys/send")
+@api_auth_required
+@api_role_required(["admin"])
+def send_surveys():
+    """
+    Envía correos de encuesta:
+      - test=1 → SIEMPRE manda a l21111182@cdjuarez.tecnm.mx (sin importar query)
+      - test=0/omitido → usa tu query de alumnos atendidos
+    Requiere sesión MSAL delegada activa (pestaña “Conexión Outlook”).
+    """
+    # 1) token
+    token = acquire_token_silent()
+    if not token:
+        return jsonify({"error": "no_ms_session", "message": "Inicia sesión en la pestaña 'Conexión Outlook'."}), 401
+
+    # 2) filtros
+    start, end = _range_from_query()
+    limit = request.args.get("limit", type=int) or 200
+    offset = request.args.get("offset", type=int) or 0
+    is_test = request.args.get("test", "0") in ("1","true","yes")
+
+    # 3) destinatarios
+    targets = []
+    if is_test:
+        targets = ["l21111182@cdjuarez.tecnm.mx"]
+    else:
+        # EJEMPLO: obtén correos a partir de tus modelos
+        from models.user import User
+        from models.request import Request as Req
+        q = (
+            db.session.query(User)
+            .join(Req, Req.student_id == User.id)
+            .filter(
+                Req.status.notin_(["PENDING", "CANCELED", "NO_SHOW"]),
+                Req.updated_at >= start,
+                Req.updated_at <= end,
+            )
+            .order_by(Req.updated_at.desc())
+            .limit(limit).offset(offset)
+        )
+        rows = [student_email(e) for (e) in q.all() if e]
+        current_app.logger.warning(f"Correos : {rows}")
+        targets = rows
+
+    if not targets:
+        return jsonify({"ok": True, "sent": 0, "detail": "Sin destinatarios"}), 200
+
+    # 4) contenido (pon tu Microsoft Forms URL, etc.)
+    forms_url = os.getenv("SURVEY_FORMS_URL", "https://forms.office.com/r/xxxxx")
+    subject = "Encuesta de satisfacción AgendaTec"
+    html = f"""
+      <p>¡Hola! 👋</p>
+      <p>Si recientemente realizaste un trámite en AgendaTec, tu opinión nos ayuda a mejorar.</p>
+      <p>Por favor, responde esta encuesta rápida (menos de 1 minuto):<br>
+      <a href="{forms_url}">{forms_url}</a></p>
+      <p>¡Gracias!</p>
+    """
+    #return jsonify({"ok":True})
+    # 5) enviar en lotes pequeños (Graph permite varios por minuto, manténlo conservador)
+    sent, errors = 0, []
+    for addr in targets[:10]:
+        r = graph_send_mail(token, subject, html, [addr])
+        if r.status_code in (202, 200):
+            sent += 1
+        else:
+            errors.append({"to": addr, "status": r.status_code, "body": r.text})
+
+    return jsonify({"ok": True, "sent": sent, "errors": errors, "total_targets": len(targets)})

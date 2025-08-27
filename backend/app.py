@@ -19,7 +19,7 @@ def create_app():
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", "sqlite:///dev.db")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["JWT_REFRESH_THRESHOLD_SECONDS"] = 2 * 3600 
-    app.config["STATIC_VERSION"] = "1.0.22233475"  
+    app.config["STATIC_VERSION"] = "1.0.222334765"  
 
 
     db.init_app(app)
@@ -104,6 +104,7 @@ def create_app():
             if "usuarios" in lbl: return "bi-people"
             if "solicitudes" in lbl: return "bi-journal-text"
             if "reportes" in lbl: return "bi-bar-chart"
+            if "encuestas" in lbl: return "bi-clipboard2-check"
             return "bi-grid"
 
         def is_active(url: str) -> bool:
@@ -132,6 +133,7 @@ def create_app():
                 {"label":"Usuarios","endpoint":"admin_pages.admin_users","roles":["admin"]},
                 {"label":"Solicitudes","endpoint":"admin_pages.admin_requests","roles":["admin"]},
                 {"label":"Reportes","endpoint":"admin_pages.admin_reports","roles":["admin"]},
+                {"label":"Encuestas","endpoint":"admin_surveys_pages.admin_surveys","roles":["admin"]},
             ]
             all_items = student + coord + social + admin_items
             if not role:
@@ -194,11 +196,13 @@ def register_blueprints(app):
     from routes.pages.coord import coord_pages_bp
     from routes.pages.social import social_pages_bp
     from routes.pages.admin import admin_pages_bp
+    from routes.pages.admin_surveys import admin_surveys_pages
     app.register_blueprint(social_pages_bp, url_prefix="/social")
     app.register_blueprint(pages_auth_bp, url_prefix="/auth")
     app.register_blueprint(student_pages_bp, url_prefix="/student")
     app.register_blueprint(coord_pages_bp, url_prefix="/coord")
     app.register_blueprint(admin_pages_bp, url_prefix="/admin")
+    app.register_blueprint(admin_surveys_pages)
 
 def role_home(role: str) -> str:
         return { "student": "/student/home",
