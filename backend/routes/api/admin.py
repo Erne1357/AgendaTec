@@ -6,6 +6,7 @@ from typing import Optional, Iterable
 from flask import Blueprint, request, jsonify, send_file, g, current_app
 from sqlalchemy import func, case, and_, or_, cast, Date
 from sqlalchemy.orm import joinedload, contains_eager
+from sqlalchemy.sql import extract
 
 from models import db
 from models.user import User
@@ -176,7 +177,6 @@ def stats_overview():
         .group_by(Req.status)
     )
     totals = [{"status": s, "total": t} for (s, t) in totals_q.all()]
-    current_app.logger.warning(totals)
     def _dialect_name():
         try:
             bind = db.session.get_bind()  # devuelve el engine activo para esta sesión
@@ -783,7 +783,6 @@ def stats_coordinators():
                 row["states"] = dict(st) if isinstance(st, defaultdict) else st
             ob.append(row)
         resp["overall_by_day"] = ob
-    current_app.logger.warning(f"Resp {resp}")
     return jsonify(resp)
 
 #-----------------Email ---------------------
@@ -811,7 +810,7 @@ def send_surveys():
     # 3) destinatarios
     targets = []
     if is_test:
-        targets = ["l21111182@cdjuarez.tecnm.mx"]
+        targets = ["jefatura_cc@cdjuarez.tecnm.mx"]
     else:
         # EJEMPLO: obtén correos a partir de tus modelos
         from models.user import User
@@ -828,26 +827,23 @@ def send_surveys():
             .limit(limit).offset(offset)
         )
         rows = [student_email(e) for (e) in q.all() if e]
-        current_app.logger.warning(f"Correos : {rows}")
         targets = rows
 
     if not targets:
         return jsonify({"ok": True, "sent": 0, "detail": "Sin destinatarios"}), 200
-
     # 4) contenido (pon tu Microsoft Forms URL, etc.)
     forms_url = os.getenv("SURVEY_FORMS_URL", "https://forms.office.com/r/xxxxx")
     subject = "Encuesta de satisfacción AgendaTec"
     html = f"""
       <p>¡Hola! 👋</p>
-      <p>Si recientemente realizaste un trámite en AgendaTec, tu opinión nos ayuda a mejorar.</p>
+      <p>Si recientemente realizaste un trámite en AgendaTec, para nosotros es muy importante tu opinión en la mejora de nuestros servicios, apóyanos respondiendo está breve encuesta..</p>
       <p>Por favor, responde esta encuesta rápida (menos de 1 minuto):<br>
       <a href="{forms_url}">{forms_url}</a></p>
       <p>¡Gracias!</p>
     """
-    #return jsonify({"ok":True})
     # 5) enviar en lotes pequeños (Graph permite varios por minuto, manténlo conservador)
     sent, errors = 0, []
-    for addr in targets[:10]:
+    for addr in targets:
         r = graph_send_mail(token, subject, html, [addr])
         if r.status_code in (202, 200):
             sent += 1
@@ -855,3 +851,83 @@ def send_surveys():
             errors.append({"to": addr, "status": r.status_code, "body": r.text})
 
     return jsonify({"ok": True, "sent": sent, "errors": errors, "total_targets": len(targets)})
+
+@api_admin_bp.get("/stats/activity")
+@api_auth_required
+@api_role_required(["admin"])
+def stats_activity():
+    """
+    Histograma por hora (0..23) de UPDATED_AT.
+    - ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    - ?rtype=ALL|APPOINTMENT|DROP (default ALL)
+    Devuelve:
+      { range, overall: [24], coordinators: [{id,name,hours:[24]}] }
+    """
+    start, end = _range_from_query()
+    rtype = (request.args.get("rtype", "ALL") or "ALL").upper()
+    if rtype not in ("ALL", "APPOINTMENT", "DROP"):
+        rtype = "ALL"
+
+    # Helpers para acumular
+    def _zeros24(): return [0]*24
+    overall = _zeros24()
+    by_coord = {}
+
+    # ---- APPOINTMENT (join Appointment->Coordinator) ----
+    if rtype in ("ALL", "APPOINTMENT"):
+        q_ap = (
+            db.session.query(
+                Coordinator.id.label("cid"),
+                User.full_name.label("cname"),
+                extract("hour", Req.updated_at).cast(db.Integer).label("h"),
+                func.count(Req.id)
+            )
+            .join(Appointment, Appointment.request_id == Req.id)
+            .join(Coordinator, Coordinator.id == Appointment.coordinator_id)
+            .join(User, User.id == Coordinator.user_id)
+            .filter(
+                Req.type == "APPOINTMENT",
+                Req.updated_at >= start,
+                Req.updated_at <= end,
+            )
+            .group_by("cid", "cname", "h")
+        )
+        for cid, cname, h, n in q_ap.all():
+            h = int(h or 0)
+            overall[h] += int(n)
+            arr = by_coord.setdefault(int(cid), {"id": int(cid), "name": cname, "hours": _zeros24()})["hours"]
+            arr[h] += int(n)
+
+    # ---- DROP (join Program->ProgramCoordinator->Coordinator) ----
+    if rtype in ("ALL", "DROP"):
+        q_dr = (
+            db.session.query(
+                Coordinator.id.label("cid"),
+                User.full_name.label("cname"),
+                extract("hour", Req.updated_at).cast(db.Integer).label("h"),
+                func.count(Req.id)
+            )
+            .join(Program, Program.id == Req.program_id)
+            .join(ProgramCoordinator, ProgramCoordinator.program_id == Program.id)
+            .join(Coordinator, Coordinator.id == ProgramCoordinator.coordinator_id)
+            .join(User, User.id == Coordinator.user_id)
+            .filter(
+                Req.type == "DROP",
+                Req.updated_at >= start,
+                Req.updated_at <= end,
+            )
+            .group_by("cid", "cname", "h")
+        )
+        for cid, cname, h, n in q_dr.all():
+            h = int(h or 0)
+            overall[h] += int(n)
+            arr = by_coord.setdefault(int(cid), {"id": int(cid), "name": cname, "hours": _zeros24()})["hours"]
+            arr[h] += int(n)
+
+    resp = {
+        "range": {"from": start.isoformat(), "to": end.isoformat()},
+        "overall": overall,
+        "coordinators": sorted(by_coord.values(), key=lambda x: x["name"] or ""),
+        "labels": [f"{h:02d}:00" for h in range(24)],
+    }
+    return jsonify(resp)

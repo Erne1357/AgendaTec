@@ -61,7 +61,6 @@ def coord_pw_changed_required(view):
             # Debes tener una función que verifique el estado, por ejemplo:
             from models import Coordinator
             coord = Coordinator.query.filter_by(user_id=cu["sub"]).first()
-            current_app.logger.warning("Verificando si el coordinador debe cambiar su contraseña" + str(getattr(coord, "must_change_pw", False)) )
             if coord and getattr(coord, "must_change_pw", False):
                 # Redirige a home del coordinador (donde está el modal)
                 return redirect(url_for("coord_pages.coord_home_page"))

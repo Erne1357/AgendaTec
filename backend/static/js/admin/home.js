@@ -16,8 +16,10 @@
 
   // Rango por defecto: últimos 7 días
   function initDates() {
-    const to = new Date();
-    const from = new Date(Date.now() - 7 * 86400000);
+    //const to = new Date();
+    //const from = new Date(Date.now() - 7 * 86400000);
+    const to = new Date ('2025-08-27');
+    const from = new Date('2025-08-24');
     $("#fltTo").value = to.toISOString().slice(0, 10);
     $("#fltFrom").value = from.toISOString().slice(0, 10);
   }

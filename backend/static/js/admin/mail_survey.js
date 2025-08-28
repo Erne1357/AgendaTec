@@ -23,7 +23,7 @@
     return q.toString();
   }
 
-  async function sendBatch({ test, limit = 200, offset = 0 } = {}) {
+  async function sendBatch({ test, limit = 700, offset = 0 } = {}) {
     const qs = currentRangeQS();
     const url = `${endpoint}?${qs}&limit=${limit}&offset=${offset}&test=${test ? "1" : "0"}`;
     const r = await fetch(url, { method: "POST", credentials: "include" });

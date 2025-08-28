@@ -20,8 +20,17 @@
         max-height: 380px;
         overflow: auto;
     }
-    .pieHost { position:relative; height:260px; }
-    .miniPieBox { position:relative; height:180px; }
+
+    .pieHost {
+        position: relative;
+        height: 260px;
+    }
+
+    .miniPieBox {
+        position: relative;
+        height: 180px;
+    }
+
     /* Alturas estables para charts dentro de tabs ocultos */
     #panePieGlobal .pieHost {
         position: relative;
@@ -36,6 +45,26 @@
     #paneSeries .seriesHost {
         position: relative;
         height: 260px;
+    }
+
+    .actHost {
+        position: relative;
+        height: 280px;
+        /* alto base móvil */
+    }
+
+    @media (min-width: 992px) {
+        .actHost {
+            height: 320px;
+        }
+
+        /* un poco más alto en desktop */
+    }
+
+    .actHost>canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
     }
 </style>
 {% endblock %}
@@ -128,6 +157,25 @@
                             Por coordinador
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tabBarsGlobal" data-bs-toggle="tab"
+                            data-bs-target="#paneBarsGlobal" type="button" role="tab" aria-controls="paneBarsGlobal"
+                            aria-selected="false">
+                            Porcentajes global
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tabBarsCoord" data-bs-toggle="tab" data-bs-target="#paneBarsCoord"
+                            type="button" role="tab" aria-controls="paneBarsCoord" aria-selected="false">
+                            Porcentaces P/coord
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tabActivity" data-bs-toggle="tab" data-bs-target="#paneActivity"
+                            type="button" role="tab" aria-controls="paneActivity" aria-selected="false">
+                            Actividad por hora
+                        </button>
+                    </li>
                 </ul>
 
                 <!-- Controles para pasteles -->
@@ -171,6 +219,47 @@
                         tabindex="0">
                         <div class="border rounded p-2">
                             <div id="miniPieGrid" class="row g-3"></div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="paneBarsGlobal" role="tabpanel" aria-labelledby="tabBarsGlobal"
+                        tabindex="0">
+                        <div class="border rounded p-2">
+                            <canvas id="chBarsGlobal" style="width:100%;height:320px;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Barras % por coordinador (apiladas 100%) -->
+                    <div class="tab-pane fade" id="paneBarsCoord" role="tabpanel" aria-labelledby="tabBarsCoord"
+                        tabindex="0">
+                        <div class="border rounded p-2">
+                            <canvas id="chBarsCoord" style="width:100%;height:420px;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Actividad por hora -->
+                    <div class="tab-pane fade" id="paneActivity" role="tabpanel" aria-labelledby="tabActivity"
+                        tabindex="0">
+                        <div class="d-flex flex-wrap gap-2 mb-2">
+                            <div class="input-group input-group-sm" style="max-width:320px;">
+                                <span class="input-group-text">Coordinador</span>
+                                <select id="selActCoord" class="form-select form-select-sm">
+                                    <!-- se llena dinámicamente -->
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-12 col-lg-6">
+                                <div class="border rounded p-2">
+                                    <h6 class="mb-2">Global</h6>
+                                    <canvas id="chActGlobal" style="width:100%;height:280px;"></canvas>
+                                </div>
+                            </div>
+                            <div class="col-12 col-lg-6">
+                                <div class="border rounded p-2">
+                                    <h6 class="mb-2">Seleccionado</h6>
+                                    <canvas id="chActCoord" style="width:100%;height:280px;"></canvas>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -219,4 +308,6 @@
 <script src="{{ url_for('static', filename='js/admin/home.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='js/admin/home_pies.js') }}?v={{ static_version }}"></script>
 <script src="{{ url_for('static', filename='js/admin/mail_survey.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='js/admin/home_bars.js') }}?v={{ static_version }}"></script>
+<script src="{{ url_for('static', filename='js/admin/home_activity.js') }}?v={{ static_version }}"></script>
 {% endblock %}

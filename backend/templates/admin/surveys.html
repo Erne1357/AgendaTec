@@ -111,7 +111,7 @@
     if (f) u.searchParams.set("from", f);
     if (t) u.searchParams.set("to", t);
     u.searchParams.set("test", String(test));
-    u.searchParams.set("limit", "200"); u.searchParams.set("offset","0");
+    u.searchParams.set("limit", "700"); u.searchParams.set("offset","0");
     const r = await fetch(u, {method:"POST", credentials:"include"});
     const j = await r.json().catch(()=>({}));
     out.textContent += JSON.stringify(j, null, 2);

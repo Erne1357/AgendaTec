@@ -120,7 +120,6 @@ def broadcast_appointment_created(socketio, coord_id: int, day: str, payload: di
     socketio.emit("appointment_created", payload, to=_room_ap_day(coord_id, day), namespace=NAMESPACE)
     try:
         program_id = payload.get("program_id")
-        current_app.logger.warning(f"Payload : {payload}")
         socketio.emit("appointment_created", payload, to=_room_social_ap_day(day), namespace=NAMESPACE)
         if program_id:
             socketio.emit("appointment_created", payload,
@@ -143,7 +142,6 @@ def broadcast_request_status_changed(socketio, coord_id: int, payload: dict):
     try:
         if payload.get("type") == "APPOINTMENT" and day:
             program_id = payload.get("program_id")
-            current_app.logger.warning(f"Payload : {payload}")
             socketio.emit("request_status_changed", payload, to=_room_social_ap_day(day), namespace=NAMESPACE)
             if program_id:
                 socketio.emit("request_status_changed", payload,
